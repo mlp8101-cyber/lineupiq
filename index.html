@@ -660,7 +660,7 @@ body {
           <div class="nav-title">Scouting</div>
           <div class="nav-sub">Opponent notes</div>
         </div>
-        <button class="nav-btn primary" onclick="showToast('New opponent added')">+ Add</button>
+        <button class="nav-btn primary" onclick="addOpponent()">+ Add</button>
       </div>
 
       <div class="section-hdr">Opponents</div>
@@ -801,40 +801,30 @@ const opponents = [
   { id:4, name:'Lakeview Wolves',    color:'#5F5E5A', tonight:false, lastGame:'Never',   record:'—', avgRuns:0, tags:[], history:[] },
 ];
 
+let nextOppId = 5;
+
 // ── Monte Carlo simulation engine ───────────────────────────────────────────
-// Runs N games of 9 innings using each batter's actual stat-derived probabilities
-
 function paOutcomeProbabilities(p) {
-  // Apply Bayesian regression-to-mean for small samples (k=5 calibrated to actual game scores)
-  // Without this, inflated small-sample AVGs (.750 in 8 AB) produce unrealistically high run totals
-  const pa = Math.max(p.pa || 1, 1);
-  const ab = Math.max(p.ab || pa, 1);
-  const K  = 5; // regression weight — calibrated against actual team scores
+  const obp = Math.min(p.obp || 0.300, 0.550);
+  const avg = Math.min(p.avg || 0.250, obp * 0.95);
+  const iso = Math.min(p.iso || 0.060, 0.250);
 
-  const LEAGUE_AVG = 0.270;
-  const LEAGUE_BB  = 0.10;
-  const LEAGUE_ISO = 0.08;
+  const outRate = Math.max(1 - obp, 0.40);
+  const onBase  = 1 - outRate;
 
-  function regress(stat, priorMean) {
-    return (stat * pa + priorMean * K) / (pa + K);
-  }
+  const hitFrac = avg / Math.max(obp, avg, 0.001);
+  const hitRate = Math.min(onBase * hitFrac, 0.500);
+  const bbRate  = Math.min(Math.max(0, onBase - hitRate), 0.12);
 
-  const rAvg = regress(p.avg  || 0, LEAGUE_AVG);
-  const rBB  = regress((p.bbpct || 0) / 100, LEAGUE_BB);
-  const rISO = regress(p.iso  || 0, LEAGUE_ISO);
+  const hrRate     = Math.min(iso * 0.25, hitRate * 0.12);
+  const tripleRate = Math.min(iso * 0.04, hitRate * 0.04);
+  const doubleRate = Math.min(iso * 0.38, hitRate * 0.18);
+  const singleRate = Math.max(0, hitRate - hrRate - tripleRate - doubleRate);
+  const hbpRate    = Math.min(0.02, (p.hbp || 0) / Math.max(p.pa || 1, 1));
 
-  // Hit type breakdown from regressed stats
-  const hitPerPA   = Math.min(rAvg * (ab / pa), 0.65);
-  const hrRate     = Math.min(rISO * 0.30, hitPerPA * 0.15, 0.08);
-  const tripleRate = Math.min(rISO * 0.05, hitPerPA * 0.06, 0.03);
-  const doubleRate = Math.min(rISO * 0.45, hitPerPA * 0.25, 0.14);
-  const singleRate = Math.max(0, hitPerPA - hrRate - tripleRate - doubleRate);
-  const bbRate     = Math.min(rBB, 0.30);
-  const hbpRate    = Math.min(0.03, (p.hbp || 0) / pa);
-  const outRate    = Math.max(0.15, 1 - singleRate - doubleRate - tripleRate - hrRate - bbRate - hbpRate);
+  const adjOut = Math.max(0.20, 1 - singleRate - doubleRate - tripleRate - hrRate - bbRate - hbpRate);
 
-  // Normalize to exactly 1.0
-  const total = singleRate + doubleRate + tripleRate + hrRate + bbRate + hbpRate + outRate;
+  const total = singleRate + doubleRate + tripleRate + hrRate + bbRate + hbpRate + adjOut;
   return {
     single: singleRate / total,
     double: doubleRate / total,
@@ -842,12 +832,11 @@ function paOutcomeProbabilities(p) {
     hr:     hrRate     / total,
     bb:     bbRate     / total,
     hbp:    hbpRate    / total,
-    out:    outRate    / total,
+    out:    adjOut     / total,
   };
 }
 
 function simulateGames(order, numGames, scoutMultipliers) {
-  // Build the batting rotation — all players in order, deduplicated
   const seen = new Set();
   const activePlayers = order.filter(pi => {
     if (pi === undefined || pi === null || !players[pi] || !players[pi].active) return false;
@@ -860,7 +849,6 @@ function simulateGames(order, numGames, scoutMultipliers) {
     const p   = players[pi];
     if (!p) return null;
     const raw = paOutcomeProbabilities(p);
-    // Apply scouting multipliers then renormalize
     const adj = {
       bb:     raw.bb  * (scoutMultipliers.bb    || 1),
       hbp:    raw.hbp,
@@ -877,8 +865,8 @@ function simulateGames(order, numGames, scoutMultipliers) {
 
   if (!probs.length) return { mean:0, p5:0, p95:0, byInning:Array(6).fill(0) };
 
-  const INNINGS = 6;          // 10U standard game length
-  const RUN_CAP  = 999;        // No run limit per inning
+  const INNINGS = 6;
+  const RUN_CAP  = 999;
   const gameScores = [];
   const inningTotals = Array(INNINGS).fill(0);
   const n = activePlayers.length;
@@ -888,7 +876,6 @@ function simulateGames(order, numGames, scoutMultipliers) {
     let batterIdx = 0;
     for (let inn = 0; inn < INNINGS; inn++) {
       let outs = 0;
-      // bases: 0=empty, 1=occupied. Index 0=first, 1=second, 2=third
       let b1 = 0, b2 = 0, b3 = 0;
       let inningRuns = 0;
 
@@ -896,7 +883,6 @@ function simulateGames(order, numGames, scoutMultipliers) {
         const pr = probs[batterIdx % n];
         batterIdx++;
 
-        // Sample outcome
         let r = Math.random(), outcome = 'out';
         let cum = 0;
         for (const [key, val] of Object.entries(pr)) {
@@ -907,21 +893,16 @@ function simulateGames(order, numGames, scoutMultipliers) {
         if (outcome === 'out') {
           outs++;
         } else if (outcome === 'bb' || outcome === 'hbp') {
-          // Walk: force-advance only runners that are forced
-          if (b1 && b2 && b3) { inningRuns++; }     // bases loaded: runner on 3rd scores
-          else if (b1 && b2)  { b3 = 1; }            // runners on 1+2: runner advances to 3rd
-          else if (b1)        { b2 = 1; }            // runner on 1st: advances to 2nd
-          b1 = 1;                                     // batter takes first
+          if (b1 && b2 && b3) { inningRuns++; }
+          else if (b1 && b2)  { b3 = 1; }
+          else if (b1)        { b2 = 1; }
+          b1 = 1;
         } else if (outcome === 'single') {
-          // Single: runners on 2nd and 3rd score; runner on 1st goes to 2nd (occasionally 3rd)
           inningRuns += b3 + b2;
           b3 = 0; b2 = b1; b1 = 1;
-          // Speed bonus: ~30% chance runner from 1st goes to 3rd (skip b2 assignment)
-          // Keep simple for now
         } else if (outcome === 'double') {
-          // Double: all runners score except sometimes runner on 1st stops at 3rd
           inningRuns += b3 + b2;
-          const firstScores = b1 && (Math.random() < 0.5); // 50% chance 1st-base runner scores
+          const firstScores = b1 && (Math.random() < 0.5);
           if (firstScores) inningRuns++;
           b3 = b1 && !firstScores ? 1 : 0;
           b2 = 1; b1 = 0;
@@ -951,7 +932,6 @@ function simulateGames(order, numGames, scoutMultipliers) {
 }
 
 function getScoutMultipliers() {
-  // Read active scouting tags for tonight's opponent and return multipliers
   const tonight = opponents.find(o => o.tonight);
   if (!tonight || !state.scoutingOn) return { bb: 1, power: 1, out: 1 };
   const tags = tonight.tags || [];
@@ -959,15 +939,11 @@ function getScoutMultipliers() {
   if (tags.includes('Walks batters'))    bbMult    *= 1.20;
   if (tags.includes('Gives up power'))   powerMult *= 1.15;
   if (tags.includes('High K rate'))      outMult   *= 1.12;
-  if (tags.includes('Fastball heavy'))   outMult   *= 0.95; // contact easier
+  if (tags.includes('Fastball heavy'))   outMult   *= 0.95;
   if (tags.includes('Wild pitcher'))     bbMult    *= 1.10;
-  if (tags.includes('Left-handed (LHP)')) {
-    // Slight boost — handled in optimizer, minor effect on run total
-  }
   return { bb: bbMult, power: powerMult, out: outMult };
 }
 
-// Cache for current simulation results
 let simCache = {
   optimal: null, alt1: null, alt2: null, current: null,
   scoutingOn: null, lineupSnapshot: null,
@@ -993,12 +969,10 @@ function runSimulation() {
       const mults    = getScoutMultipliers();
       const numGames = 2000;
 
-      // Build 9-slot locked constraint (top of batting order)
       const top9 = lineupOrder.filter(pi => players[pi] && players[pi].active).slice(0, 9);
       while (top9.length < 9) top9.push(top9[top9.length % Math.max(1, top9.length)]);
       const lockedSlots = top9.map(pi => players[pi] && players[pi].locked ? pi : null);
 
-      // Full batting rotation: optimized top-9 + remaining players cycle after
       const buildFullRotation = (top9order) => {
         const inTop = new Set(top9order.filter(pi => pi !== null));
         const bench = lineupOrder.filter(pi => players[pi] && players[pi].active && !inTop.has(pi));
@@ -1039,7 +1013,8 @@ function runSimulation() {
       document.getElementById('stale-note').classList.remove('show');
       document.getElementById('pred-badge').classList.remove('show');
       renderPrediction();
-      showToast('Done — ' + numGames.toLocaleString() + ' games simulated (' + activePlayers.length + ' players in rotation)');
+      const _avgOBP = (activePlayers.reduce((s,pi)=>s+(players[pi]&&players[pi].obp||0),0)/Math.max(activePlayers.length,1)).toFixed(3);
+      showToast('Done: ' + simCache.optimal.result.mean.toFixed(1) + ' runs projected · team OBP ' + _avgOBP);
 
     } catch(err) {
       btn.textContent = 'Run simulation';
@@ -1051,7 +1026,6 @@ function runSimulation() {
   }, 50);
 }
 
-
 function getActiveSimData() {
   const keys = ['optimal', 'alt1', 'alt2', 'current'];
   const key  = keys[state.selectedPredictMode] || 'optimal';
@@ -1059,13 +1033,11 @@ function getActiveSimData() {
 }
 
 function computeContributors(order) {
-  // Score each player's contribution based on slot position and wOBA
   if (!order) return [];
   return order
     .map((pi, si) => ({ pi, si, p: players[pi] }))
     .filter(x => x.p && x.p.active)
     .map(x => {
-      const slotW = SLOT_WEIGHTS[x.si] || SLOT_WEIGHTS[8];
       const score = scorePlayerForSlot(x.p, x.si);
       return { slot: x.si + 1, name: x.p.name, score, warn: x.p.pa < 15 };
     })
@@ -1073,9 +1045,7 @@ function computeContributors(order) {
     .slice(0, 7);
 }
 
-// ── Optimizer output ───────────────────────────────────────────────────────
-// ── Dynamic optimizer — builds top-3 lineups from actual players array ──────
-// Slot weight profiles: [OBP, wOBA, ISO, SB%, QAB%]
+// ── Slot weight profiles: [OBP, wOBA, ISO, SB%, QAB%] ──────────────────────
 const SLOT_WEIGHTS = [
   [0.40, 0.20, 0.05, 0.25, 0.10], // 1 leadoff
   [0.30, 0.25, 0.10, 0.15, 0.20], // 2
@@ -1097,7 +1067,6 @@ function scorePlayerForSlot(p, slotIdx) {
 }
 
 function buildOptimalLineup(lockedSlots) {
-  // Ensure we only work with 9 slots max
   const slots9 = lockedSlots.slice(0, 9);
   while (slots9.length < 9) slots9.push(null);
   lockedSlots = slots9;
@@ -1107,20 +1076,17 @@ function buildOptimalLineup(lockedSlots) {
   const freeSlotIdxs    = lockedSlots.map((v,i) => v === null ? i : -1).filter(i => i !== -1);
 
   if (!freePlayerIds.length || !freeSlotIdxs.length) {
-    // Nothing to optimize - return current order
     return lockedSlots.map((v, i) => v !== null ? v : (activePlayers[i] !== undefined ? activePlayers[i] : null));
   }
 
-  const assignments = [...lockedSlots]; // copy locked
+  const assignments = [...lockedSlots];
   const remaining   = [...freePlayerIds];
 
-  // Sort free slots by "importance" (slots 1,3,4 matter most)
-  const slotPriority = [3,4,2,5,1,6,0,7,8]; // 0-indexed
+  const slotPriority = [3,4,2,5,1,6,0,7,8];
   const sortedFreeSlots = freeSlotIdxs.slice().sort((a,b) => slotPriority.indexOf(a) - slotPriority.indexOf(b));
 
   for (const slotIdx of sortedFreeSlots) {
     if (!remaining.length) break;
-    // Find best unassigned player for this slot
     let bestScore = -Infinity, bestPIdx = -1, bestRIdx = -1;
     remaining.forEach((pi, ri) => {
       const s = scorePlayerForSlot(players[pi], slotIdx);
@@ -1133,18 +1099,17 @@ function buildOptimalLineup(lockedSlots) {
   return assignments;
 }
 
+// ── FIX: generateOptimizerOptions now builds full rotation for opt.order ───
 function generateOptimizerOptions() {
   const activePlayers = players.map((p,i) => i).filter(i => players[i] && players[i].active);
   if (activePlayers.length === 0) return [];
 
-  // Locked slots from current lineupOrder + player.locked flag
   const validOrder2 = lineupOrder.filter(pi => players[pi] && players[pi].active);
   const lockedSlots = validOrder2.slice(0, 9).map(pi =>
     (players[pi] && players[pi].locked) ? pi : null
   );
   while (lockedSlots.length < 9) lockedSlots.push(null);
 
-  // Generate 3 variations with slightly different weight emphasis
   const variations = [
     { label:'Optimal lineup', desc:'Maximises overall run value', rec:true,  weightMod:[0,0,0,0,0] },
     { label:'Alt lineup 2',   desc:'Contact-forward order',       rec:false, weightMod:[0.05,0,-0.05,0,0.05] },
@@ -1152,7 +1117,6 @@ function generateOptimizerOptions() {
   ];
 
   return variations.map((v, vi) => {
-    // Apply weight modifier for this variation
     const savedWeights = SLOT_WEIGHTS.map(w => [...w]);
     if (vi > 0) {
       SLOT_WEIGHTS.forEach((w, si) => {
@@ -1164,20 +1128,27 @@ function generateOptimizerOptions() {
       });
     }
 
-    const order = buildOptimalLineup(lockedSlots);
+    // Build the optimal top-9 order
+    const top9order = buildOptimalLineup(lockedSlots);
 
-    // Restore weights
+    // Restore weights immediately after building the top-9
     SLOT_WEIGHTS.forEach((w, si) => { savedWeights[si].forEach((val,wi) => { w[wi] = val; }); });
 
-    // Compute projected runs (simple wOBA-based estimate)
-    const totalWoba = order.reduce((sum, pi) => sum + (pi !== null && players[pi] ? players[pi].woba : 0), 0);
-    const avgWoba   = order.filter(pi => pi !== null).length > 0
-      ? totalWoba / order.filter(pi => pi !== null).length : 0;
-    const projRuns  = (avgWoba * 18).toFixed(1); // rough linear estimate
+    // ── FIX: build full rotation so applyLineup preserves entire roster ──
+    const inTop = new Set(top9order.filter(pi => pi !== null));
+    const bench = lineupOrder.filter(pi => players[pi] && players[pi].active && !inTop.has(pi));
+    const order = [...top9order.filter(pi => pi !== null), ...bench];
+
+    // Projected runs estimate (wOBA-based, display only)
+    const totalWoba = top9order.reduce((sum, pi) => sum + (pi !== null && players[pi] ? players[pi].woba : 0), 0);
+    const avgWoba   = top9order.filter(pi => pi !== null).length > 0
+      ? totalWoba / top9order.filter(pi => pi !== null).length : 0;
+    const projRuns  = (avgWoba * 18).toFixed(1);
     const projLo    = Math.max(0, Math.round(parseFloat(projRuns) - 2));
     const projHi    = Math.round(parseFloat(projRuns) + 2);
 
-    const slots = order.map((pi, si) => {
+    // ── FIX: slots display is built from top9order (batting order only) ──
+    const slots = top9order.map((pi, si) => {
       if (pi === null || !players[pi]) return { s: si+1, n:'—', stat:'—' };
       const p = players[pi];
       return {
@@ -1195,7 +1166,7 @@ function generateOptimizerOptions() {
       delta: vi === 0 ? computeDeltaVsCurrent(order) : '',
       rec: v.rec,
       slots,
-      order, // raw player index array
+      order, // full rotation: top-9 optimized + bench remainder
     };
   });
 }
@@ -1211,7 +1182,6 @@ function computeDeltaVsCurrent(newOrder) {
 
 // ── Render lineup ──────────────────────────────────────────────────────────
 function renderLineup() {
-  // Clean stale null/deleted entries from lineupOrder
   for (let i = lineupOrder.length - 1; i >= 0; i--) {
     if (!players[lineupOrder[i]]) lineupOrder.splice(i, 1);
   }
@@ -1374,9 +1344,7 @@ function openOptimizerSheet() {
   document.getElementById('optimizer-sheet').classList.add('open');
 }
 
-
 function applyLineup(opt) {
-  // opt.order is an array of player indices — splice into lineupOrder in-place
   lineupOrder.splice(0, lineupOrder.length, ...opt.order.filter(pi => pi !== null));
   closeOptimizerSheet(null, true);
   renderLineup();
@@ -1410,7 +1378,6 @@ function renderPrediction() {
   const sim = getActiveSimData();
 
   if (!sim) {
-    // No simulation run yet — show placeholder state
     document.getElementById('m-runs').textContent = '—';
     document.getElementById('m-range').textContent = 'run simulation first';
     document.getElementById('m-win').textContent  = '—';
@@ -1426,18 +1393,15 @@ function renderPrediction() {
   const r   = sim.result;
   const scout = state.scoutingOn;
 
-  // Key metrics
   document.getElementById('m-runs').textContent  = r.mean.toFixed(1);
   document.getElementById('m-range').textContent = 'range ' + r.p5 + '–' + r.p95;
   document.getElementById('scout-badge').style.display = scout ? 'inline-block' : 'none';
 
-  // Win probability: % of simulated games >= 4 runs (rough youth avg to beat)
   const winPct = simCache.optimal
     ? Math.round((simCache.optimal.result.mean / Math.max(1, simCache.optimal.result.mean + 1.5)) * 100)
     : 50;
   document.getElementById('m-win').textContent = winPct + '%';
 
-  // Delta vs current order
   if (simCache.current && state.selectedPredictMode !== 3) {
     const delta = (r.mean - simCache.current.result.mean);
     const sign  = delta >= 0 ? '+' : '';
@@ -1448,7 +1412,6 @@ function renderPrediction() {
     document.getElementById('m-delta').style.color = 'var(--gray-300)';
   }
 
-  // CI bar
   const maxRuns  = Math.max(r.p95 + 2, 12);
   const fillLeft = Math.round((r.p5 / maxRuns) * 100);
   const fillW    = Math.round(((r.p95 - r.p5) / maxRuns) * 100);
@@ -1461,7 +1424,6 @@ function renderPrediction() {
     '90% of simulated games score between ' + r.p5 + ' and ' + r.p95 + ' runs.' +
     (scout ? ' Scout-adjusted.' : '');
 
-  // Inning chart
   const innings = r.byInning;
   const maxInn  = Math.max(...innings, 0.1);
   const chart   = document.getElementById('inning-chart');
@@ -1474,7 +1436,6 @@ function renderPrediction() {
     lbls.innerHTML  += '<div class="inn-col"><div class="inn-lbl">' + (i + 1) + '</div></div>';
   });
 
-  // Contributors
   const contribs = computeContributors(sim.order);
   const maxScore = contribs[0] ? contribs[0].score : 1;
   const cl = document.getElementById('contrib-list');
@@ -1492,7 +1453,6 @@ function renderPrediction() {
       '</div>';
   });
 }
-
 
 // ── Roster ──────────────────────────────────────────────────────────────────
 function renderRoster() {
@@ -1519,7 +1479,6 @@ function renderRoster() {
     list.appendChild(row);
   });
 
-  // Update subtitle
   const active = players.filter(p => p && p.active).length;
   const sub = document.querySelector('#screen-roster .nav-sub');
   if (sub) sub.textContent = active + ' active · ' + players.filter(p=>p).length + ' total';
@@ -1528,7 +1487,6 @@ function renderRoster() {
 function togglePlayerActive(pi) {
   if (!players[pi]) return;
   players[pi].active = !players[pi].active;
-  // Update lineupOrder — remove if inactive, add back if active
   const idx = lineupOrder.indexOf(pi);
   if (!players[pi].active && idx !== -1) {
     lineupOrder.splice(idx, 1);
@@ -1544,11 +1502,9 @@ function togglePlayerActive(pi) {
 function deletePlayer(pi) {
   if (!players[pi]) return;
   const name = players[pi].name;
-  // Remove ALL occurrences from lineupOrder
   for (let i = lineupOrder.length - 1; i >= 0; i--) {
     if (lineupOrder[i] === pi) lineupOrder.splice(i, 1);
   }
-  // Mark as deleted
   players[pi] = null;
   renderRoster();
   renderLineup();
@@ -1560,18 +1516,77 @@ function deletePlayer(pi) {
 function renderScouting() {
   const list = document.getElementById('opp-list');
   list.innerHTML = '';
+
+  if (opponents.length === 0) {
+    list.innerHTML = '<div style="color:var(--gray-300);font-size:13px;padding:20px 0;text-align:center">No opponents yet.<br>Tap + Add to create one.</div>';
+    return;
+  }
+
   opponents.forEach(opp => {
-    list.innerHTML += `
-      <div class="opp-row ${opp.tonight ? 'tonight' : ''}" onclick="openScoutingDetail(${opp.id})">
-        <div class="opp-dot" style="background:${opp.color}"></div>
-        <div>
-          <div class="opp-name">${opp.name}</div>
-          <div class="opp-date">${opp.tonight ? 'Tonight · ' : ''}Last: ${opp.lastGame} · ${opp.record}</div>
-        </div>
-        ${opp.tonight ? '<div class="tonight-pill">Tonight</div>' : `<span style="font-size:11px;color:var(--gray-300);margin-left:auto">${opp.tags.length} note${opp.tags.length!==1?'s':''}</span>`}
-        <div class="opp-arr">›</div>
-      </div>`;
+    const row = document.createElement('div');
+    row.className = 'opp-row' + (opp.tonight ? ' tonight' : '');
+    row.innerHTML = `
+      <div class="opp-dot" style="background:${opp.color || '#3E7A35'}"></div>
+      <div style="flex:1;min-width:0">
+        <div class="opp-name">${opp.name}</div>
+        <div class="opp-date">${opp.tags.length} scouting note${opp.tags.length!==1?'s':''}</div>
+      </div>
+      ${opp.tonight
+        ? '<div class="tonight-pill">Tonight</div>'
+        : `<button onclick="setTonightOpponent(${opp.id});event.stopPropagation()" style="background:rgba(255,255,255,0.06);border:0.5px solid rgba(255,255,255,0.12);border-radius:6px;color:var(--gray-200);font-size:10px;font-weight:600;padding:4px 8px;cursor:pointer;white-space:nowrap;margin-right:4px">Set tonight</button>`}
+      <button onclick="openScoutingDetail(${opp.id});event.stopPropagation()" style="background:rgba(255,255,255,0.06);border:0.5px solid rgba(255,255,255,0.12);border-radius:6px;color:var(--gray-200);font-size:10px;padding:4px 8px;cursor:pointer">Scout</button>
+      <button onclick="deleteOpponent(${opp.id});event.stopPropagation()" style="background:rgba(163,45,45,0.12);border:0.5px solid rgba(163,45,45,0.25);border-radius:6px;color:#F09595;font-size:10px;padding:4px 8px;cursor:pointer;margin-left:4px">✕</button>
+    `;
+    row.addEventListener('click', () => openScoutingDetail(opp.id));
+    list.appendChild(row);
   });
+
+  const tonight = opponents.find(o => o.tonight);
+  updateGameBanner(tonight);
+}
+
+function setTonightOpponent(oppId) {
+  opponents.forEach(o => o.tonight = (o.id === oppId));
+  const opp = opponents.find(o => o.id === oppId);
+  renderScouting();
+  markStale();
+  showToast('Tonight: vs ' + opp.name + ' · Scouting active');
+}
+
+function deleteOpponent(oppId) {
+  const idx = opponents.findIndex(o => o.id === oppId);
+  if (idx === -1) return;
+  const name = opponents[idx].name;
+  const wasTonight = opponents[idx].tonight;
+  opponents.splice(idx, 1);
+  if (wasTonight && opponents.length > 0) opponents[0].tonight = true;
+  renderScouting();
+  markStale();
+  showToast(name + ' removed');
+}
+
+function updateGameBanner(tonight) {
+  const oppEl  = document.getElementById('banner-opp');
+  const subEl  = document.getElementById('lineup-game-sub');
+  if (tonight) {
+    if (oppEl) oppEl.textContent = 'vs ' + tonight.name;
+    if (subEl) subEl.textContent = 'vs ' + tonight.name + ' · Scouting active';
+  } else {
+    if (oppEl) oppEl.textContent = 'No game selected';
+    if (subEl) subEl.textContent = 'Tap Scouting to set tonight opponent';
+  }
+}
+
+function addOpponent() {
+  const name = prompt('Opponent team name:');
+  if (!name || !name.trim()) return;
+  const colors = ['#3E7A35','#534AB7','#185FA5','#8B3A3A','#5F5E5A','#7A5C2E'];
+  const color  = colors[opponents.length % colors.length];
+  const isFirst = opponents.length === 0;
+  opponents.push({ id: nextOppId++, name: name.trim(), tonight: isFirst, tags: [], color });
+  renderScouting();
+  if (isFirst) showToast(name.trim() + ' added and set as tonight opponent');
+  else showToast(name.trim() + ' added');
 }
 
 const allTags = {
@@ -1656,8 +1671,8 @@ function switchTab(tab, btn) {
 
 // ── Game selection ─────────────────────────────────────────────────────────
 function selectGame() {
-  showToast('Game set: vs. Riverside Hawks — scouting notes activated on Prediction tab');
-  document.getElementById('lineup-game-sub').textContent = 'vs. Riverside Hawks · 6:00 PM';
+  const scoutBtn = document.querySelector('[data-tab="scouting"]');
+  if (scoutBtn) switchTab('scouting', scoutBtn);
 }
 
 // ── Toast ──────────────────────────────────────────────────────────────────
@@ -1669,16 +1684,7 @@ function showToast(msg) {
   toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
 }
 
-
 // ── GameChanger CSV Import ──────────────────────────────────────────────────
-// Handles the real GC export format:
-//   Row 0: section labels (Batting, Pitching, Fielding)
-//   Row 1: actual column headers (Number, Last, First, GP, PA, AB, AVG, ...)
-//   Rows 2-N: player data rows
-//   Last data row: "Totals" — skipped
-//   After blank row: Glossary row — skipped
-// Name is split into "Last" and "First" columns. Jersey is "Number".
-
 function parseCSV(text) {
   const lines = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n').filter(l => l.trim());
   if (lines.length < 3) return { headers: [], rows: [] };
@@ -1695,11 +1701,10 @@ function parseCSV(text) {
     return result;
   }
 
-  // Detect if row 0 is the GC section-label row (contains "Batting" but not "Last"/"First")
   const row0 = splitLine(lines[0]);
   let headerRowIdx = 0;
   if (row0.some(c => c === 'Batting' || c === 'Pitching' || c === 'Fielding')) {
-    headerRowIdx = 1; // Real headers are on row 1
+    headerRowIdx = 1;
   }
 
   const headers = splitLine(lines[headerRowIdx]);
@@ -1740,7 +1745,6 @@ function handleCSVImport(event) {
         return;
       }
 
-      // Column index lookup — supports "Last"+"First" split OR "Name" combined
       const iLast    = colIdx(headers, ['Last','last_name','Last Name']);
       const iFirst   = colIdx(headers, ['First','first_name','First Name']);
       const iName    = colIdx(headers, ['Name','Player','Player Name','name']);
@@ -1771,7 +1775,6 @@ function handleCSVImport(event) {
       const iFB      = colIdx(headers, ['FB%','Fly Ball Percentage']);
       const iTB      = colIdx(headers, ['TB','Total Bases']);
 
-      // Detect column layout
       const hasLastFirst = iLast !== -1 && iFirst !== -1;
       const hasCombined  = iName !== -1;
       if (!hasLastFirst && !hasCombined) {
@@ -1779,7 +1782,6 @@ function handleCSVImport(event) {
         return;
       }
 
-      // Clear existing roster and lineup before importing
       players.length = 0;
       lineupOrder.length = 0;
 
@@ -1788,12 +1790,10 @@ function handleCSVImport(event) {
       rows.forEach(row => {
         if (!row || row.length < 5) return;
 
-        // Build name
         let name = '';
         if (hasLastFirst) {
           const last  = gcVal(row, iLast);
           const first = gcVal(row, iFirst);
-          // Skip blank rows, Totals row, Glossary row
           if (!last && !first) return;
           if (last.toLowerCase() === 'totals') return;
           if (row[0].toLowerCase() === 'glossary') return;
@@ -1818,33 +1818,29 @@ function handleCSVImport(event) {
         const sf      = gcInt(row, iSF);
         const so      = gcInt(row, iSO);
         const sb      = gcInt(row, iSB);
-        const sbPctRaw = gcFloat(row, iSBpct); // GC gives as 83.33, not .8333
+        const sbPctRaw = gcFloat(row, iSBpct);
         const cs      = gcInt(row, iCS);
         const avg     = gcFloat(row, iAVG);
         const obp     = gcFloat(row, iOBP);
         const slg     = gcFloat(row, iSLG);
         const qab     = gcInt(row, iQAB);
-        const qabpct  = gcFloat(row, iQABpct); // already as 46.67 not .467
+        const qabpct  = gcFloat(row, iQABpct);
         const babip   = gcFloat(row, iBABIP);
         const hhb     = gcInt(row, iHHB);
         const gbpct   = gcFloat(row, iGB);
         const fbpct   = gcFloat(row, iFB);
         const tb      = gcInt(row, iTB);
 
-        // Skip rows with truly no batting data
         if (pa === 0 && ab === 0 && h === 0) { skipped.push(name); return; }
 
-        // Derived stats
         const iso  = Math.round((slg - avg) * 1000) / 1000;
         const kpct = pa > 0 ? Math.round((so / pa) * 100 * 10) / 10 : 0;
         const bbpct = pa > 0 ? Math.round((bb / pa) * 100 * 10) / 10 : 0;
 
-        // wOBA (youth-calibrated weights)
         const denom = pa - sf;
         const wobaNum = 0.69*bb + 0.72*hbp + 0.88*singles + 1.25*doubles + 1.58*triples + 2.01*hr;
         const woba = denom > 0 ? Math.round((wobaNum / denom) * 1000) / 1000 : 0;
 
-        // SB% — GC exports as e.g. 100.0 or 83.33; convert to decimal for display
         const sbpct = Math.round(sbPctRaw * 10) / 10;
 
         const nameParts = name.split(/\s+/);
@@ -1862,7 +1858,6 @@ function handleCSVImport(event) {
           active: true, locked: false,
         };
 
-        // Match existing by name (case-insensitive) or jersey+lastname
         const existIdx = players.findIndex(ep =>
           ep.name.toLowerCase() === name.toLowerCase() ||
           (jersey && ep.jersey === parseInt(jersey) && nameParts.some(part => ep.name.toLowerCase().includes(part.toLowerCase())))
@@ -1896,7 +1891,6 @@ function handleCSVImport(event) {
       const added   = imported.filter(i => !i.updated).length;
       const updated = imported.filter(i => i.updated).length;
 
-      // Build result summary
       const detected = [];
       if (iOBP !== -1)    detected.push('OBP');
       if (iSLG !== -1)    detected.push('SLG');
@@ -1961,6 +1955,7 @@ renderLineup();
 renderRoster();
 renderScouting();
 renderPrediction();
+updateGameBanner(null);
 </script>
 </body>
 </html>
