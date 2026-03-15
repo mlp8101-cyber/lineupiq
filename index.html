@@ -1336,8 +1336,7 @@ function handleBoxScoreImport(event) {
         `BB%: ${(bbPct*100).toFixed(1)}%  K%: ${(kPct*100).toFixed(1)}%  ISO: ${iso.toFixed(3)}`,
         `SB: ${totalSB} (${sbAtt} att)  HR: ${totalHR}  2B: ${total2B}  3B: ${total3B}`,
         `Players: ${playerCount}  Total PA: ${totalPA}`,
-      ].join('
-');
+      ].join('\n');
 
       // Find existing opponent by name or create new one
       let opp = opponents.find(o => o.name.toLowerCase() === teamName.toLowerCase());
