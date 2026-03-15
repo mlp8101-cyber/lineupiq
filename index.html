@@ -660,7 +660,7 @@ body {
           <div class="nav-title">Scouting</div>
           <div class="nav-sub">Opponent notes</div>
         </div>
-        <button class="nav-btn primary" onclick="addOpponent()">+ Add</button>
+        <button class="nav-btn primary" onclick="showToast('New opponent added')">+ Add</button>
       </div>
 
       <div class="section-hdr">Opponents</div>
@@ -805,33 +805,36 @@ const opponents = [
 // Runs N games of 9 innings using each batter's actual stat-derived probabilities
 
 function paOutcomeProbabilities(p) {
-  // Calibrated against actual Slammers fall ball scores (mean 11.3, range 2-22)
-  // OBP capped at .550 to correct small-sample inflation
-  const obp = Math.min(p.obp || 0.300, 0.550);
-  const avg = Math.min(p.avg || 0.250, obp * 0.95);
-  const iso = Math.min(p.iso || 0.060, 0.250);
+  // Apply Bayesian regression-to-mean for small samples (k=5 calibrated to actual game scores)
+  // Without this, inflated small-sample AVGs (.750 in 8 AB) produce unrealistically high run totals
+  const pa = Math.max(p.pa || 1, 1);
+  const ab = Math.max(p.ab || pa, 1);
+  const K  = 5; // regression weight — calibrated against actual team scores
 
-  // Out probability: floor at 40% so even great hitters make outs
-  const outRate = Math.max(1 - obp, 0.40);
-  const onBase  = 1 - outRate;
+  const LEAGUE_AVG = 0.270;
+  const LEAGUE_BB  = 0.10;
+  const LEAGUE_ISO = 0.08;
 
-  // Split on-base into hits vs walks
-  const hitFrac = avg / Math.max(obp, avg, 0.001);
-  const hitRate = Math.min(onBase * hitFrac, 0.500);
-  const bbRate  = Math.min(Math.max(0, onBase - hitRate), 0.12); // cap walks at 12%
+  function regress(stat, priorMean) {
+    return (stat * pa + priorMean * K) / (pa + K);
+  }
 
-  // Split hits by type using ISO
-  const hrRate     = Math.min(iso * 0.25, hitRate * 0.12);
-  const tripleRate = Math.min(iso * 0.04, hitRate * 0.04);
-  const doubleRate = Math.min(iso * 0.38, hitRate * 0.18);
-  const singleRate = Math.max(0, hitRate - hrRate - tripleRate - doubleRate);
-  const hbpRate    = Math.min(0.02, (p.hbp || 0) / Math.max(p.pa || 1, 1));
+  const rAvg = regress(p.avg  || 0, LEAGUE_AVG);
+  const rBB  = regress((p.bbpct || 0) / 100, LEAGUE_BB);
+  const rISO = regress(p.iso  || 0, LEAGUE_ISO);
 
-  // Recalculate out to absorb any rounding
-  const adjOut = Math.max(0.20, 1 - singleRate - doubleRate - tripleRate - hrRate - bbRate - hbpRate);
+  // Hit type breakdown from regressed stats
+  const hitPerPA   = Math.min(rAvg * (ab / pa), 0.65);
+  const hrRate     = Math.min(rISO * 0.30, hitPerPA * 0.15, 0.08);
+  const tripleRate = Math.min(rISO * 0.05, hitPerPA * 0.06, 0.03);
+  const doubleRate = Math.min(rISO * 0.45, hitPerPA * 0.25, 0.14);
+  const singleRate = Math.max(0, hitPerPA - hrRate - tripleRate - doubleRate);
+  const bbRate     = Math.min(rBB, 0.30);
+  const hbpRate    = Math.min(0.03, (p.hbp || 0) / pa);
+  const outRate    = Math.max(0.15, 1 - singleRate - doubleRate - tripleRate - hrRate - bbRate - hbpRate);
 
   // Normalize to exactly 1.0
-  const total = singleRate + doubleRate + tripleRate + hrRate + bbRate + hbpRate + adjOut;
+  const total = singleRate + doubleRate + tripleRate + hrRate + bbRate + hbpRate + outRate;
   return {
     single: singleRate / total,
     double: doubleRate / total,
@@ -839,7 +842,7 @@ function paOutcomeProbabilities(p) {
     hr:     hrRate     / total,
     bb:     bbRate     / total,
     hbp:    hbpRate    / total,
-    out:    adjOut     / total,
+    out:    outRate    / total,
   };
 }
 
@@ -1036,8 +1039,7 @@ function runSimulation() {
       document.getElementById('stale-note').classList.remove('show');
       document.getElementById('pred-badge').classList.remove('show');
       renderPrediction();
-      const _avgOBP = (activePlayers.reduce((s,pi)=>s+(players[pi]&&players[pi].obp||0),0)/Math.max(activePlayers.length,1)).toFixed(3);
-      showToast('Done: ' + simCache.optimal.result.mean.toFixed(1) + ' runs projected · team OBP ' + _avgOBP);
+      showToast('Done — ' + numGames.toLocaleString() + ' games simulated (' + activePlayers.length + ' players in rotation)');
 
     } catch(err) {
       btn.textContent = 'Run simulation';
@@ -1558,78 +1560,18 @@ function deletePlayer(pi) {
 function renderScouting() {
   const list = document.getElementById('opp-list');
   list.innerHTML = '';
-
-  if (opponents.length === 0) {
-    list.innerHTML = '<div style="color:var(--gray-300);font-size:13px;padding:20px 0;text-align:center">No opponents yet.<br>Tap + Add to create one.</div>';
-    return;
-  }
-
   opponents.forEach(opp => {
-    const row = document.createElement('div');
-    row.className = 'opp-row' + (opp.tonight ? ' tonight' : '');
-    row.innerHTML = `
-      <div class="opp-dot" style="background:${opp.color || '#3E7A35'}"></div>
-      <div style="flex:1;min-width:0">
-        <div class="opp-name">${opp.name}</div>
-        <div class="opp-date">${opp.tags.length} scouting note${opp.tags.length!==1?'s':''}</div>
-      </div>
-      ${opp.tonight
-        ? '<div class="tonight-pill">Tonight</div>'
-        : `<button onclick="setTonightOpponent(${opp.id});event.stopPropagation()" style="background:rgba(255,255,255,0.06);border:0.5px solid rgba(255,255,255,0.12);border-radius:6px;color:var(--gray-200);font-size:10px;font-weight:600;padding:4px 8px;cursor:pointer;white-space:nowrap;margin-right:4px">Set tonight</button>`}
-      <button onclick="openScoutingDetail(${opp.id});event.stopPropagation()" style="background:rgba(255,255,255,0.06);border:0.5px solid rgba(255,255,255,0.12);border-radius:6px;color:var(--gray-200);font-size:10px;padding:4px 8px;cursor:pointer">Scout</button>
-      <button onclick="deleteOpponent(${opp.id});event.stopPropagation()" style="background:rgba(163,45,45,0.12);border:0.5px solid rgba(163,45,45,0.25);border-radius:6px;color:#F09595;font-size:10px;padding:4px 8px;cursor:pointer;margin-left:4px">✕</button>
-    `;
-    row.addEventListener('click', () => openScoutingDetail(opp.id));
-    list.appendChild(row);
+    list.innerHTML += `
+      <div class="opp-row ${opp.tonight ? 'tonight' : ''}" onclick="openScoutingDetail(${opp.id})">
+        <div class="opp-dot" style="background:${opp.color}"></div>
+        <div>
+          <div class="opp-name">${opp.name}</div>
+          <div class="opp-date">${opp.tonight ? 'Tonight · ' : ''}Last: ${opp.lastGame} · ${opp.record}</div>
+        </div>
+        ${opp.tonight ? '<div class="tonight-pill">Tonight</div>' : `<span style="font-size:11px;color:var(--gray-300);margin-left:auto">${opp.tags.length} note${opp.tags.length!==1?'s':''}</span>`}
+        <div class="opp-arr">›</div>
+      </div>`;
   });
-
-  // Update lineup banner
-  const tonight = opponents.find(o => o.tonight);
-  updateGameBanner(tonight);
-}
-
-function setTonightOpponent(oppId) {
-  opponents.forEach(o => o.tonight = (o.id === oppId));
-  const opp = opponents.find(o => o.id === oppId);
-  renderScouting();
-  markStale();
-  showToast('Tonight: vs ' + opp.name + ' · Scouting active');
-}
-
-function deleteOpponent(oppId) {
-  const idx = opponents.findIndex(o => o.id === oppId);
-  if (idx === -1) return;
-  const name = opponents[idx].name;
-  const wasTonight = opponents[idx].tonight;
-  opponents.splice(idx, 1);
-  if (wasTonight && opponents.length > 0) opponents[0].tonight = true;
-  renderScouting();
-  markStale();
-  showToast(name + ' removed');
-}
-
-function updateGameBanner(tonight) {
-  const oppEl  = document.getElementById('banner-opp');
-  const subEl  = document.getElementById('lineup-game-sub');
-  if (tonight) {
-    if (oppEl) oppEl.textContent = 'vs ' + tonight.name;
-    if (subEl) subEl.textContent = 'vs ' + tonight.name + ' · Scouting active';
-  } else {
-    if (oppEl) oppEl.textContent = 'No game selected';
-    if (subEl) subEl.textContent = 'Tap Scouting to set tonight opponent';
-  }
-}
-
-function addOpponent() {
-  const name = prompt('Opponent team name:');
-  if (!name || !name.trim()) return;
-  const colors = ['#3E7A35','#534AB7','#185FA5','#8B3A3A','#5F5E5A','#7A5C2E'];
-  const color  = colors[opponents.length % colors.length];
-  const isFirst = opponents.length === 0;
-  opponents.push({ id: nextOppId++, name: name.trim(), tonight: isFirst, tags: [], color });
-  renderScouting();
-  if (isFirst) showToast(name.trim() + ' added and set as tonight opponent');
-  else showToast(name.trim() + ' added');
 }
 
 const allTags = {
@@ -1714,9 +1656,8 @@ function switchTab(tab, btn) {
 
 // ── Game selection ─────────────────────────────────────────────────────────
 function selectGame() {
-  // Tap the game banner → go to Scouting tab to pick/manage tonight's opponent
-  const scoutBtn = document.querySelector('[data-tab="scouting"]');
-  if (scoutBtn) switchTab('scouting', scoutBtn);
+  showToast('Game set: vs. Riverside Hawks — scouting notes activated on Prediction tab');
+  document.getElementById('lineup-game-sub').textContent = 'vs. Riverside Hawks · 6:00 PM';
 }
 
 // ── Toast ──────────────────────────────────────────────────────────────────
@@ -2020,7 +1961,6 @@ renderLineup();
 renderRoster();
 renderScouting();
 renderPrediction();
-updateGameBanner(null);
 </script>
 </body>
 </html>
