@@ -26,9 +26,9 @@ module.exports = async function handler(req, res) {
     const { blobs } = await list({ prefix: 'slammers-roster' });
     await Promise.all(blobs.map(b => del(b.url)));
 
-    // Write new roster blob
+    // Write new roster blob — private store requires access: 'private'
     await put('slammers-roster.json', payload, {
-      access: 'public',
+      access: 'private',
       contentType: 'application/json',
     });
 
