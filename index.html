@@ -506,6 +506,19 @@ body {
         </div>
         <button class="nav-btn primary" onclick="addOpponent()">+ Add</button>
       </div>
+
+      <input type="file" id="boxscore-csv-input" accept=".csv,text/csv" style="display:none" onchange="handleBoxScoreImport(event)">
+      <button class="import-btn" onclick="document.getElementById('boxscore-csv-input').click()" style="margin:12px 16px 0;width:calc(100% - 32px)">
+        ↓ Import opponent box score CSV
+      </button>
+
+      <div id="boxscore-result" style="display:none;margin:10px 16px 0;background:var(--green-800);border-radius:14px;border:0.5px solid rgba(255,255,255,0.08);overflow:hidden">
+        <div style="padding:12px 16px 8px;border-bottom:0.5px solid rgba(255,255,255,0.06)">
+          <div style="font-size:11px;font-weight:600;color:var(--green-400);text-transform:uppercase;letter-spacing:.08em" id="boxscore-title">Import result</div>
+        </div>
+        <div style="padding:10px 16px;font-size:13px;line-height:1.7;color:var(--gray-300)" id="boxscore-body"></div>
+      </div>
+
       <div class="section-hdr">Opponents</div>
       <div id="opp-list"></div>
     </div>
@@ -1082,13 +1095,28 @@ function deleteOpponent(id){const idx=opponents.findIndex(o=>o.id===id);if(idx==
 function updateGameBanner(t){const o=document.getElementById('banner-opp'),s=document.getElementById('lineup-game-sub');if(t){if(o)o.textContent='vs '+t.name;if(s)s.textContent='vs '+t.name+' · Scouting active';}else{if(o)o.textContent='No game selected';if(s)s.textContent='Tap Scouting to set tonight opponent';}}
 function addOpponent(){const name=prompt('Opponent team name:');if(!name||!name.trim())return;const colors=['#3E7A35','#534AB7','#185FA5','#8B3A3A','#5F5E5A','#7A5C2E'],isFirst=opponents.length===0;opponents.push({id:nextOppId++,name:name.trim(),tonight:isFirst,tags:[],color:colors[opponents.length%colors.length],record:'—',avgRuns:0,history:[]});renderScouting();showToast(name.trim()+(isFirst?' added as tonight opponent':' added'));}
 
-const allTags={'Pitch mix':[{label:'Fastball heavy',cls:'tag-pitcher'},{label:'Curveball heavy',cls:'tag-pitcher'},{label:'Changeup heavy',cls:'tag-pitcher'},{label:'Slider heavy',cls:'tag-pitcher'}],'Handedness':[{label:'Left-handed (LHP)',cls:'tag-hand'},{label:'Right-handed (RHP)',cls:'tag-hand'},{label:'Switch pitcher',cls:'tag-hand'}],'Control':[{label:'Walks batters',cls:'tag-control'},{label:'High K rate',cls:'tag-control'},{label:'Slow to plate',cls:'tag-control'},{label:'Wild pitcher',cls:'tag-control'}],'Power':[{label:'Gives up power',cls:'tag-power'},{label:'Groundball pitcher',cls:'tag-power'},{label:'Flyball pitcher',cls:'tag-power'}],'Defense':[{label:'Pulls 3B in',cls:'tag-defense'},{label:'Weak up middle',cls:'tag-defense'},{label:'Strong OF arm',cls:'tag-defense'}],'Misc':[{label:'New pitcher — unknown',cls:'tag-misc'},{label:'Multiple pitchers',cls:'tag-misc'},{label:'Hot team',cls:'tag-misc'}]};
+const allTags={
+  'Pitch mix':[{label:'Fastball heavy',cls:'tag-pitcher'},{label:'Curveball heavy',cls:'tag-pitcher'},{label:'Changeup heavy',cls:'tag-pitcher'},{label:'Slider heavy',cls:'tag-pitcher'}],
+  'Handedness':[{label:'Left-handed (LHP)',cls:'tag-hand'},{label:'Right-handed (RHP)',cls:'tag-hand'},{label:'Switch pitcher',cls:'tag-hand'}],
+  'Control':[{label:'Walks batters',cls:'tag-control'},{label:'High K rate',cls:'tag-control'},{label:'Low K rate — makes contact',cls:'tag-control'},{label:'Slow to plate',cls:'tag-control'},{label:'Wild pitcher',cls:'tag-control'},{label:'High walk rate',cls:'tag-control'},{label:'Low walk rate',cls:'tag-control'}],
+  'Power':[{label:'Gives up power',cls:'tag-power'},{label:'Groundball pitcher',cls:'tag-power'},{label:'Flyball pitcher',cls:'tag-power'}],
+  'Offense':[{label:'High OBP lineup',cls:'tag-defense'},{label:'High contact team',cls:'tag-defense'},{label:'Speed on bases',cls:'tag-defense'},{label:'Multiple triples — speed team',cls:'tag-defense'}],
+  'Defense':[{label:'Pulls 3B in',cls:'tag-defense'},{label:'Weak up middle',cls:'tag-defense'},{label:'Strong OF arm',cls:'tag-defense'}],
+  'Misc':[{label:'New pitcher — unknown',cls:'tag-misc'},{label:'Multiple pitchers',cls:'tag-misc'},{label:'Hot team',cls:'tag-misc'}],
+};
 
 function openScoutingDetail(oppId){
   const opp=opponents.find(o=>o.id===oppId),sheet=document.getElementById('scouting-sheet-content');
   let tagsHtml='';for(const[cat,tags]of Object.entries(allTags)){tagsHtml+=`<div class="tag-section"><div class="tag-section-lbl">${cat}</div><div class="tag-grid">${tags.map(t=>`<div class="tag-chip ${t.cls} ${opp.tags.includes(t.label)?'':'inactive'}" onclick="toggleTag(${oppId},'${t.label}',this)">${t.label}</div>`).join('')}</div></div>`;}
   let histHtml='';if(opp.history&&opp.history.length){histHtml='<div class="section-hdr">Game history</div>'+opp.history.map(h=>`<div class="hist-row"><div class="hist-date">${h.date}</div><div class="hist-score ${h.score.startsWith('W')?'win':'loss'}">${h.score}</div><div class="hist-note">${h.note}</div></div>`).join('');}
-  sheet.innerHTML=`<div class="sheet-handle"></div><div class="opp-header"><div class="opp-title">${opp.name}</div><div class="opp-subtitle">Record: ${opp.record}</div></div>${tagsHtml}<div class="note-field"><div class="note-label">Strike zone note</div><textarea class="note-input" rows="2" placeholder="e.g. Throws low & outside vs RHB"></textarea></div><div class="note-field"><div class="note-label">Coach notes</div><textarea class="note-input" rows="3" placeholder="Anything your scouts observed…"></textarea></div>${histHtml}<div style="height:16px"></div><div style="padding:0 16px 8px"><button class="use-lineup-btn" onclick="closeScoutingSheet(null,true);showToast('Scouting notes saved for ${opp.name}')">Save notes</button></div>`;
+  // Show imported stat summary if available
+  const statNoteHtml = opp.scoutNote ? `
+    <div class="tag-section">
+      <div class="tag-section-lbl">Imported stats</div>
+      <div style="font-size:12px;color:var(--gray-300);line-height:1.8;font-family:'Barlow Condensed',sans-serif;letter-spacing:.02em">${opp.scoutNote.replace(/\n/g,'<br>')}</div>
+    </div>` : '';
+
+  sheet.innerHTML=`<div class="sheet-handle"></div><div class="opp-header"><div class="opp-title">${opp.name}</div><div class="opp-subtitle">Record: ${opp.record}</div></div>${statNoteHtml}${tagsHtml}<div class="note-field"><div class="note-label">Strike zone note</div><textarea class="note-input" rows="2" placeholder="e.g. Throws low & outside vs RHB"></textarea></div><div class="note-field"><div class="note-label">Coach notes</div><textarea class="note-input" rows="3" placeholder="Anything your scouts observed…"></textarea></div>${histHtml}<div style="height:16px"></div><div style="padding:0 16px 8px"><button class="use-lineup-btn" onclick="closeScoutingSheet(null,true);showToast('Scouting notes saved for ${opp.name}')">Save notes</button></div>`;
   document.getElementById('scouting-sheet').classList.add('open');
 }
 function toggleTag(oppId,label,el){const opp=opponents.find(o=>o.id===oppId),idx=opp.tags.indexOf(label);if(idx===-1){opp.tags.push(label);el.classList.remove('inactive');}else{opp.tags.splice(idx,1);el.classList.add('inactive');}markStale();}
@@ -1170,6 +1198,207 @@ function showImportResult(type,filename,bodyHtml,isHtml){
   title.textContent=(type==='success'?'✓ ':'✗ ')+filename;
   if(isHtml)body.innerHTML=bodyHtml;else body.textContent=bodyHtml;
   panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+// ── Box Score CSV Import ──────────────────────────────────────────────────
+// Parses a GC box score batting CSV for the opposing team and auto-generates
+// scouting tags based on the computed stats.
+
+function handleBoxScoreImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const { headers, rows } = parseCSV(e.target.result);
+      if (!headers.length) {
+        showBoxScoreResult('error', file.name, 'No headers found. Make sure this is a GameChanger batting stats CSV.');
+        return;
+      }
+
+      // Re-use existing column helpers
+      const iLast   = colIdx(headers, ['Last','last_name','Last Name']);
+      const iFirst  = colIdx(headers, ['First','first_name','First Name']);
+      const iName   = colIdx(headers, ['Name','Player','Player Name']);
+      const iPA     = colIdx(headers, ['PA','Plate Appearances']);
+      const iAB     = colIdx(headers, ['AB']);
+      const iH      = colIdx(headers, ['H','Hits']);
+      const iAVG    = colIdx(headers, ['AVG']);
+      const iOBP    = colIdx(headers, ['OBP']);
+      const iSLG    = colIdx(headers, ['SLG']);
+      const iBB     = colIdx(headers, ['BB','Walks']);
+      const iSO     = colIdx(headers, ['SO','K']);
+      const iHR     = colIdx(headers, ['HR']);
+      const i2B     = colIdx(headers, ['2B']);
+      const i3B     = colIdx(headers, ['3B']);
+      const iSB     = colIdx(headers, ['SB']);
+      const iCS     = colIdx(headers, ['CS']);
+      const iHBP    = colIdx(headers, ['HBP']);
+      const iSF     = colIdx(headers, ['SF']);
+      const i1B     = colIdx(headers, ['1B']);
+
+      const hasLF = iLast !== -1 && iFirst !== -1;
+      const hasComb = iName !== -1;
+      if (!hasLF && !hasComb) {
+        showBoxScoreResult('error', file.name, 'Could not find player name columns.');
+        return;
+      }
+
+      // Parse team name from filename (e.g. "TeamName_batting_stats.csv")
+      let teamName = file.name.replace(/\.csv$/i, '').replace(/_batting.*$/i, '').replace(/_/g,' ').trim();
+      if (!teamName) teamName = 'Imported Team';
+
+      // Aggregate team stats
+      let totalPA=0, totalAB=0, totalH=0, totalBB=0, totalSO=0, totalHR=0;
+      let total2B=0, total3B=0, totalSB=0, totalCS=0, totalHBP=0, totalSF=0, total1B=0;
+      let playerCount=0;
+
+      rows.forEach(row => {
+        if (!row || row.length < 4) return;
+        let name = '';
+        if (hasLF) {
+          const l = gcVal(row, iLast), f = gcVal(row, iFirst);
+          if (!l && !f) return;
+          if (l.toLowerCase() === 'totals' || l.toLowerCase() === 'glossary') return;
+          name = (f + ' ' + l).trim();
+        } else {
+          name = gcVal(row, iName).trim();
+          if (!name || name.toLowerCase() === 'totals') return;
+        }
+        if (!name) return;
+
+        const pa  = gcInt(row, iPA);
+        const ab  = gcInt(row, iAB);
+        const h   = gcInt(row, iH);
+        if (pa === 0 && ab === 0 && h === 0) return;
+
+        const bb  = gcInt(row, iBB);
+        const so  = gcInt(row, iSO);
+        const hr  = gcInt(row, iHR);
+        const d   = gcInt(row, i2B);
+        const t   = gcInt(row, i3B);
+        const sb  = gcInt(row, iSB);
+        const cs  = gcInt(row, iCS);
+        const hbp = gcInt(row, iHBP);
+        const sf  = gcInt(row, iSF);
+        const singles = i1B !== -1 ? gcInt(row, i1B) : Math.max(0, h - d - t - hr);
+
+        totalPA  += pa;  totalAB  += ab;  totalH   += h;
+        totalBB  += bb;  totalSO  += so;  totalHR  += hr;
+        total2B  += d;   total3B  += t;   totalSB  += sb;
+        totalCS  += cs;  totalHBP += hbp; totalSF  += sf;
+        total1B  += singles;
+        playerCount++;
+      });
+
+      if (playerCount === 0) {
+        showBoxScoreResult('error', file.name, 'No valid player rows found.');
+        return;
+      }
+
+      // Compute team-level rates
+      const bbPct   = totalPA > 0 ? totalBB / totalPA : 0;
+      const kPct    = totalPA > 0 ? totalSO / totalPA : 0;
+      const avg     = totalAB > 0 ? totalH / totalAB : 0;
+      const obpDen  = totalPA - totalSF;
+      const obp     = obpDen > 0 ? (totalH + totalBB + totalHBP) / obpDen : 0;
+      const slg     = totalAB > 0 ? (total1B + 2*total2B + 3*total3B + 4*totalHR) / totalAB : 0;
+      const iso     = slg - avg;
+      const sbAtt   = totalSB + totalCS;
+      const sbPct   = sbAtt > 0 ? totalSB / sbAtt : 0;
+
+      // Auto-generate scouting tags from stats
+      const autoTags = [];
+
+      // Walk rate
+      if (bbPct >= 0.18)      autoTags.push('High walk rate');
+      else if (bbPct <= 0.06) autoTags.push('Low walk rate');
+
+      // Strikeout rate (as batters)
+      if (kPct >= 0.25)       autoTags.push('High K rate');
+      else if (kPct <= 0.10)  autoTags.push('Low K rate — makes contact');
+
+      // Power
+      if (iso >= 0.180)       autoTags.push('Gives up power');
+      else if (totalHR === 0 && totalPA >= 15) autoTags.push('Groundball pitcher');
+
+      // Speed
+      if (totalSB >= 4)       autoTags.push('Speed on bases');
+      if (total3B >= 2)       autoTags.push('Multiple triples — speed team');
+
+      // OBP / contact
+      if (obp >= 0.420)       autoTags.push('High OBP lineup');
+      if (avg >= 0.320)       autoTags.push('High contact team');
+
+      // Build stat summary lines for the scouting detail note
+      const statLines = [
+        `Team AVG: ${avg.toFixed(3)}  OBP: ${obp.toFixed(3)}  SLG: ${slg.toFixed(3)}`,
+        `BB%: ${(bbPct*100).toFixed(1)}%  K%: ${(kPct*100).toFixed(1)}%  ISO: ${iso.toFixed(3)}`,
+        `SB: ${totalSB} (${sbAtt} att)  HR: ${totalHR}  2B: ${total2B}  3B: ${total3B}`,
+        `Players: ${playerCount}  Total PA: ${totalPA}`,
+      ].join('
+');
+
+      // Find existing opponent by name or create new one
+      let opp = opponents.find(o => o.name.toLowerCase() === teamName.toLowerCase());
+      const isNew = !opp;
+
+      if (isNew) {
+        const colors = ['#005EB8','#534AB7','#8B3A3A','#5F5E5A','#7A5C2E','#185FA5'];
+        opp = {
+          id: nextOppId++,
+          name: teamName,
+          tonight: opponents.length === 0,
+          tags: [],
+          color: colors[opponents.length % colors.length],
+          record: '—', avgRuns: 0, history: [],
+          scoutNote: '',
+        };
+        opponents.push(opp);
+      }
+
+      // Merge auto-tags (don't duplicate)
+      autoTags.forEach(tag => { if (!opp.tags.includes(tag)) opp.tags.push(tag); });
+      opp.scoutNote = statLines;
+
+      renderScouting();
+      event.target.value = '';
+
+      // Show result
+      const tagList = autoTags.length
+        ? autoTags.map(t => `<span style="display:inline-block;margin:2px 4px 2px 0;padding:3px 8px;background:rgba(77,159,224,0.15);border-radius:6px;font-size:11px;color:var(--green-300)">${t}</span>`).join('')
+        : '<span style="color:var(--gray-300);font-size:12px">No tags auto-generated — stats look average across the board</span>';
+
+      const body = `
+        <div style="color:var(--green-300);margin-bottom:8px">✓ ${isNew ? 'Added' : 'Updated'}: <b>${teamName}</b> · ${playerCount} players · ${totalPA} PA</div>
+        <div style="margin-bottom:8px;font-size:12px;color:var(--gray-300)">
+          AVG ${avg.toFixed(3)} · OBP ${obp.toFixed(3)} · SLG ${slg.toFixed(3)}<br>
+          BB% ${(bbPct*100).toFixed(1)}% · K% ${(kPct*100).toFixed(1)}% · ISO ${iso.toFixed(3)}<br>
+          SB ${totalSB} · HR ${totalHR} · 2B ${total2B} · 3B ${total3B}
+        </div>
+        <div style="margin-bottom:4px;font-size:10px;font-weight:600;color:var(--green-400);text-transform:uppercase;letter-spacing:.06em">Auto-generated tags</div>
+        <div>${tagList}</div>
+      `;
+      showBoxScoreResult('success', file.name, body);
+      showToast(`${teamName} scouting updated · ${autoTags.length} tags added`);
+
+    } catch(err) {
+      console.error(err);
+      showBoxScoreResult('error', file.name, 'Parse error: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function showBoxScoreResult(type, filename, bodyHtml) {
+  const panel = document.getElementById('boxscore-result');
+  const title = document.getElementById('boxscore-title');
+  const body  = document.getElementById('boxscore-body');
+  panel.style.display = 'block';
+  title.style.color = type === 'success' ? 'var(--green-400)' : '#F09595';
+  title.textContent  = (type === 'success' ? '✓ ' : '✗ ') + filename;
+  body.innerHTML = bodyHtml;
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
