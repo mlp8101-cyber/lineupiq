@@ -1,3 +1,4 @@
+'use strict';
 const { list } = require('@vercel/blob');
 
 module.exports = async function handler(req, res) {
@@ -18,6 +19,6 @@ module.exports = async function handler(req, res) {
     return res.status(200).json(data);
   } catch (err) {
     console.error('Blob read error:', err);
-    return res.status(500).json({ error: 'Failed to load roster' });
+    return res.status(500).json({ error: err.message });
   }
 };
