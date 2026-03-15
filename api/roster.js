@@ -1,5 +1,5 @@
 'use strict';
-const { list, download } = require('@vercel/blob');
+const { list } = require('@vercel/blob');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -15,12 +15,10 @@ module.exports = async function handler(req, res) {
 
     const latest = blobs.sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt))[0];
 
-    // Use download() for private blobs instead of fetch(url)
-    const { body } = await download(latest.url);
-    const chunks = [];
-    for await (const chunk of body) chunks.push(chunk);
-    const text = Buffer.concat(chunks).toString('utf8');
-    const data = JSON.parse(text);
+    // Blobs are public — fetch via URL directly
+    const response = await fetch(latest.url);
+    if (!response.ok) throw new Error('Blob fetch failed: ' + response.status);
+    const data = await response.json();
 
     return res.status(200).json(data);
   } catch (err) {
