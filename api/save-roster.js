@@ -1,6 +1,6 @@
-import { put, list, del } from '@vercel/blob';
+const { put, list, del } = require('@vercel/blob');
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -21,11 +21,11 @@ export default async function handler(req, res) {
       savedAt: new Date().toISOString(),
     });
 
-    // Delete old roster blobs first to avoid accumulation
+    // Delete old roster blobs to avoid accumulation
     const { blobs } = await list({ prefix: 'slammers-roster' });
     await Promise.all(blobs.map(b => del(b.url)));
 
-    // Write new roster blob (access: public so the GET endpoint can fetch it)
+    // Write new roster blob
     await put('slammers-roster.json', payload, {
       access: 'public',
       contentType: 'application/json',
@@ -36,4 +36,4 @@ export default async function handler(req, res) {
     console.error('Blob write error:', err);
     return res.status(500).json({ error: 'Failed to save roster' });
   }
-}
+};
