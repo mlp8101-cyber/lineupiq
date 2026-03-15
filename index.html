@@ -405,8 +405,8 @@ body {
       </div>
       <div class="scout-toggle-row">
         <div class="toggle-info">
-          <div class="toggle-label">Apply scouting: Riverside Hawks</div>
-          <div class="toggle-sub">Fastball heavy · LHP · Walks batters</div>
+          <div class="toggle-label" id="scout-toggle-label">No opponent set</div>
+          <div class="toggle-sub" id="scout-toggle-sub">Set tonight's opponent in Scouting tab</div>
         </div>
         <div class="toggle-switch" id="scout-toggle" onclick="toggleScouting()">
           <div class="toggle-thumb"></div>
@@ -630,6 +630,7 @@ async function loadRosterFromKV() {
       renderRoster();
       return;
     }
+    // Restore players
     players.length = 0;
     data.players.forEach(p => players.push(p));
     lineupOrder.length = 0;
@@ -637,9 +638,20 @@ async function loadRosterFromKV() {
     if (lineupOrder.length === 0) {
       players.forEach((p, i) => { if (p && p.active) lineupOrder.push(i); });
     }
+    // Restore opponents
+    if (Array.isArray(data.opponents) && data.opponents.length > 0) {
+      opponents.length = 0;
+      data.opponents.forEach(o => opponents.push(o));
+      // Keep nextOppId ahead of any restored ids
+      nextOppId = Math.max(nextOppId, ...opponents.map(o => o.id + 1));
+    }
     renderLineup();
     renderRoster();
+    renderScouting();
     renderPrediction();
+    // Update scout toggle with tonight's opponent
+    const tonight = opponents.find(o => o.tonight);
+    updateGameBanner(tonight || null);
     const when = data.savedAt
       ? ' · saved ' + new Date(data.savedAt).toLocaleDateString('en-US', {month:'short', day:'numeric'})
       : '';
@@ -661,6 +673,7 @@ async function saveRosterToKV() {
       body: JSON.stringify({
         players: players.filter(Boolean),
         lineupOrder: [...lineupOrder],
+        opponents: opponents,
       }),
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -1091,10 +1104,27 @@ function renderScouting(){
   updateGameBanner(opponents.find(o=>o.tonight));
 }
 
-function setTonightOpponent(id){opponents.forEach(o=>o.tonight=(o.id===id));renderScouting();markStale();showToast('Tonight: vs '+opponents.find(o=>o.id===id).name);}
-function deleteOpponent(id){const idx=opponents.findIndex(o=>o.id===id);if(idx===-1)return;const name=opponents[idx].name,was=opponents[idx].tonight;opponents.splice(idx,1);if(was&&opponents.length>0)opponents[0].tonight=true;renderScouting();markStale();showToast(name+' removed');}
-function updateGameBanner(t){const o=document.getElementById('banner-opp'),s=document.getElementById('lineup-game-sub');if(t){if(o)o.textContent='vs '+t.name;if(s)s.textContent='vs '+t.name+' · Scouting active';}else{if(o)o.textContent='No game selected';if(s)s.textContent='Tap Scouting to set tonight opponent';}}
-function addOpponent(){const name=prompt('Opponent team name:');if(!name||!name.trim())return;const colors=['#3E7A35','#534AB7','#185FA5','#8B3A3A','#5F5E5A','#7A5C2E'],isFirst=opponents.length===0;opponents.push({id:nextOppId++,name:name.trim(),tonight:isFirst,tags:[],color:colors[opponents.length%colors.length],record:'—',avgRuns:0,history:[]});renderScouting();showToast(name.trim()+(isFirst?' added as tonight opponent':' added'));}
+function setTonightOpponent(id){opponents.forEach(o=>o.tonight=(o.id===id));const t=opponents.find(o=>o.id===id);renderScouting();updateGameBanner(t);markStale();scheduleSave();showToast('Tonight: vs '+t.name);}
+function deleteOpponent(id){const idx=opponents.findIndex(o=>o.id===id);if(idx===-1)return;const name=opponents[idx].name,was=opponents[idx].tonight;opponents.splice(idx,1);if(was&&opponents.length>0)opponents[0].tonight=true;renderScouting();updateGameBanner(opponents.find(o=>o.tonight)||null);markStale();scheduleSave();showToast(name+' removed');}
+function updateGameBanner(t){
+  const o=document.getElementById('banner-opp'),s=document.getElementById('lineup-game-sub');
+  if(t){if(o)o.textContent='vs '+t.name;if(s)s.textContent='vs '+t.name+' · Scouting active';}
+  else{if(o)o.textContent='No game selected';if(s)s.textContent='Tap Scouting to set tonight opponent';}
+  updateScoutToggle(t);
+}
+function updateScoutToggle(t) {
+  const lbl = document.getElementById('scout-toggle-label');
+  const sub = document.getElementById('scout-toggle-sub');
+  if (!lbl || !sub) return;
+  if (t) {
+    lbl.textContent = 'Apply scouting: ' + t.name;
+    sub.textContent = t.tags.length > 0 ? t.tags.slice(0,3).join(' · ') : 'No tags yet — add in Scouting tab';
+  } else {
+    lbl.textContent = 'No opponent set';
+    sub.textContent = "Set tonight's opponent in Scouting tab";
+  }
+}
+function addOpponent(){const name=prompt('Opponent team name:');if(!name||!name.trim())return;const colors=['#3E7A35','#534AB7','#185FA5','#8B3A3A','#5F5E5A','#7A5C2E'],isFirst=opponents.length===0;const newOpp={id:nextOppId++,name:name.trim(),tonight:isFirst,tags:[],color:colors[opponents.length%colors.length],record:'—',avgRuns:0,history:[]};opponents.push(newOpp);renderScouting();if(isFirst)updateGameBanner(newOpp);scheduleSave();showToast(name.trim()+(isFirst?' added as tonight opponent':' added'));}
 
 const allTags={
   'Pitch mix':[{label:'Fastball heavy',cls:'tag-pitcher'},{label:'Curveball heavy',cls:'tag-pitcher'},{label:'Changeup heavy',cls:'tag-pitcher'},{label:'Slider heavy',cls:'tag-pitcher'}],
@@ -1120,7 +1150,7 @@ function openScoutingDetail(oppId){
   sheet.innerHTML=`<div class="sheet-handle"></div><div class="opp-header"><div class="opp-title">${opp.name}</div><div class="opp-subtitle">Record: ${opp.record}</div></div>${statNoteHtml}${tagsHtml}<div class="note-field"><div class="note-label">Import box score</div><div style="font-size:11px;color:var(--gray-300);margin-bottom:10px">Upload the GC box score PDF, or paste the text below as a fallback.</div><input type="file" id="boxscore-pdf-input-${oppId}" accept=".pdf,application/pdf" style="display:none" onchange="handleBoxScorePDF(event,${oppId})"><button onclick="document.getElementById('boxscore-pdf-input-${oppId}').click()" style="width:100%;padding:12px;background:var(--green-600);color:var(--chalk);border:none;border-radius:10px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;margin-bottom:8px">↑ Upload box score PDF</button><textarea class="note-input" id="boxscore-paste-input" rows="5" placeholder="Or paste box score text here…"></textarea><button onclick="parseBoxScorePaste(${oppId})" style="width:100%;margin-top:8px;padding:11px;background:rgba(255,255,255,0.08);color:var(--chalk);border:none;border-radius:10px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;cursor:pointer">Parse pasted text</button><div id="paste-parse-result" style="margin-top:8px;font-size:12px;color:var(--green-300);display:none"></div></div><div class="note-field"><div class="note-label">Coach notes</div><textarea class="note-input" id="coach-notes-${oppId}" rows="3" placeholder="Anything your scouts observed…">${opp.coachNote||''}</textarea></div>${histHtml}<div style="height:16px"></div><div style="padding:0 16px 8px"><button class="use-lineup-btn" onclick="saveScoutingNotes(${oppId})">Save notes</button></div>`;
   document.getElementById('scouting-sheet').classList.add('open');
 }
-function toggleTag(oppId,label,el){const opp=opponents.find(o=>o.id===oppId),idx=opp.tags.indexOf(label);if(idx===-1){opp.tags.push(label);el.classList.remove('inactive');}else{opp.tags.splice(idx,1);el.classList.add('inactive');}markStale();}
+function toggleTag(oppId,label,el){const opp=opponents.find(o=>o.id===oppId),idx=opp.tags.indexOf(label);if(idx===-1){opp.tags.push(label);el.classList.remove('inactive');}else{opp.tags.splice(idx,1);el.classList.add('inactive');}markStale();scheduleSave();}
 function closeScoutingSheet(e,force){if(force||(e&&e.target===document.getElementById('scouting-sheet')))document.getElementById('scouting-sheet').classList.remove('open');}
 
 // ── Tab switching ──────────────────────────────────────────────────────────
@@ -1598,7 +1628,9 @@ function parseBoxScorePaste(oppId) {
   opp.scoutNote = summary.join('\n');
 
   renderScouting();
+  updateGameBanner(opponents.find(o=>o.tonight)||null);
   markStale();
+  scheduleSave();
 
   const resultMsg = [
     bat.players > 0 ? `${bat.players} batters parsed` : '',
@@ -1622,6 +1654,7 @@ function saveScoutingNotes(oppId) {
   if (!opp) return;
   const noteEl = document.getElementById('coach-notes-' + oppId);
   if (noteEl) opp.coachNote = noteEl.value;
+  scheduleSave();
   closeScoutingSheet(null, true);
   showToast('Scouting notes saved for ' + opp.name);
 }
