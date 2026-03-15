@@ -13,7 +13,7 @@ module.exports = async function handler(req, res) {
     const { players, lineupOrder } = req.body;
 
     if (!Array.isArray(players) || !Array.isArray(lineupOrder)) {
-      return res.status(400).json({ error: 'Invalid payload — expected arrays' });
+      return res.status(400).json({ error: 'Invalid payload' });
     }
 
     const payload = JSON.stringify({
@@ -22,17 +22,19 @@ module.exports = async function handler(req, res) {
       savedAt: new Date().toISOString(),
     });
 
-    // Delete old roster blobs to avoid accumulation
+    // Delete old blobs first
     const { blobs } = await list({ prefix: 'slammers-roster' });
     await Promise.all(blobs.map(b => del(b.url)));
 
-    // Write new roster blob — private store requires access: 'private'
-    await put('slammers-roster.json', payload, {
-      access: 'private',
+    // Vercel Blob put() requires access: 'public' — the "private store" label
+    // in the dashboard refers to store visibility, not blob access level
+    const result = await put('slammers-roster.json', payload, {
+      access: 'public',
       contentType: 'application/json',
     });
 
-    return res.status(200).json({ ok: true });
+    // Return the blob URL so the GET endpoint can fetch it directly
+    return res.status(200).json({ ok: true, url: result.url });
   } catch (err) {
     console.error('Blob write error:', err);
     return res.status(500).json({ error: err.message });
