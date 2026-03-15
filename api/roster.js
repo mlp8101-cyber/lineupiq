@@ -14,12 +14,9 @@ module.exports = async function handler(req, res) {
     if (!blobs.length) return res.status(200).json(null);
 
     const latest = blobs.sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt))[0];
-
-    // Blobs are public — fetch via URL directly
     const response = await fetch(latest.url);
-    if (!response.ok) throw new Error('Blob fetch failed: ' + response.status);
+    if (!response.ok) throw new Error('Fetch failed: ' + response.status);
     const data = await response.json();
-
     return res.status(200).json(data);
   } catch (err) {
     console.error('Blob read error:', err);
