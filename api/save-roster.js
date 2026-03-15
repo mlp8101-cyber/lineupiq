@@ -10,7 +10,7 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { players, lineupOrder } = req.body;
+    const { players, lineupOrder, opponents } = req.body;
 
     if (!Array.isArray(players) || !Array.isArray(lineupOrder)) {
       return res.status(400).json({ error: 'Invalid payload' });
@@ -19,6 +19,7 @@ module.exports = async function handler(req, res) {
     const payload = JSON.stringify({
       players,
       lineupOrder,
+      opponents: Array.isArray(opponents) ? opponents : [],
       savedAt: new Date().toISOString(),
     });
 
