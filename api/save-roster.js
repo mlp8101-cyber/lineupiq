@@ -1,3 +1,4 @@
+'use strict';
 const { put, list, del } = require('@vercel/blob');
 
 module.exports = async function handler(req, res) {
@@ -12,7 +13,7 @@ module.exports = async function handler(req, res) {
     const { players, lineupOrder } = req.body;
 
     if (!Array.isArray(players) || !Array.isArray(lineupOrder)) {
-      return res.status(400).json({ error: 'Invalid payload' });
+      return res.status(400).json({ error: 'Invalid payload — expected arrays' });
     }
 
     const payload = JSON.stringify({
@@ -34,6 +35,6 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({ ok: true });
   } catch (err) {
     console.error('Blob write error:', err);
-    return res.status(500).json({ error: 'Failed to save roster' });
+    return res.status(500).json({ error: err.message });
   }
 };
