@@ -1116,7 +1116,7 @@ function openScoutingDetail(oppId){
       <div style="font-size:12px;color:var(--gray-300);line-height:1.8;font-family:'Barlow Condensed',sans-serif;letter-spacing:.02em">${opp.scoutNote.replace(/\n/g,'<br>')}</div>
     </div>` : '';
 
-  sheet.innerHTML=`<div class="sheet-handle"></div><div class="opp-header"><div class="opp-title">${opp.name}</div><div class="opp-subtitle">Record: ${opp.record}</div></div>${statNoteHtml}${tagsHtml}<div class="note-field"><div class="note-label">Strike zone note</div><textarea class="note-input" rows="2" placeholder="e.g. Throws low & outside vs RHB"></textarea></div><div class="note-field"><div class="note-label">Coach notes</div><textarea class="note-input" rows="3" placeholder="Anything your scouts observed…"></textarea></div>${histHtml}<div style="height:16px"></div><div style="padding:0 16px 8px"><button class="use-lineup-btn" onclick="closeScoutingSheet(null,true);showToast('Scouting notes saved for ${opp.name}')">Save notes</button></div>`;
+  sheet.innerHTML=`<div class="sheet-handle"></div><div class="opp-header"><div class="opp-title">${opp.name}</div><div class="opp-subtitle">Record: ${opp.record}</div></div>${statNoteHtml}${tagsHtml}<div class="note-field"><div class="note-label">Paste box score (batting + pitching)</div><div style="font-size:11px;color:var(--gray-300);margin-bottom:8px">Copy the BATTING and PITCHING sections from the GC PDF and paste below, then tap Parse.</div><textarea class="note-input" id="boxscore-paste-input" rows="7" placeholder="Eli B #44 (SS)  4  0  0  0  0  1&#10;Cody H #4 (2B)  3  1  0  0  1  2&#10;...&#10;PITCHING&#10;Jacob V #5  2.2  7  6  6  1  3  0"></textarea><button onclick="parseBoxScorePaste(${oppId})" style="width:100%;margin-top:8px;padding:11px;background:var(--green-600);color:var(--chalk);border:none;border-radius:10px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;cursor:pointer">Parse &amp; update tags</button><div id="paste-parse-result" style="margin-top:8px;font-size:12px;color:var(--green-300);display:none"></div></div><div class="note-field"><div class="note-label">Coach notes</div><textarea class="note-input" id="coach-notes-${oppId}" rows="3" placeholder="Anything your scouts observed…">${opp.coachNote||''}</textarea></div>${histHtml}<div style="height:16px"></div><div style="padding:0 16px 8px"><button class="use-lineup-btn" onclick="saveScoutingNotes(${oppId})">Save notes</button></div>`;
   document.getElementById('scouting-sheet').classList.add('open');
 }
 function toggleTag(oppId,label,el){const opp=opponents.find(o=>o.id===oppId),idx=opp.tags.indexOf(label);if(idx===-1){opp.tags.push(label);el.classList.remove('inactive');}else{opp.tags.splice(idx,1);el.classList.add('inactive');}markStale();}
@@ -1398,6 +1398,167 @@ function showBoxScoreResult(type, filename, bodyHtml) {
   title.textContent  = (type === 'success' ? '✓ ' : '✗ ') + filename;
   body.innerHTML = bodyHtml;
   panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+
+// ── Box Score Paste Parser ─────────────────────────────────────────────────
+function parseBoxScorePaste(oppId) {
+  const opp = opponents.find(o => o.id === oppId);
+  if (!opp) return;
+
+  const raw = (document.getElementById('boxscore-paste-input') || {}).value || '';
+  if (!raw.trim()) {
+    showPasteResult('Paste some box score text first.');
+    return;
+  }
+
+  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+
+  // ── Parse batting ──────────────────────────────────────────────────────
+  // GC format: "Name #num (pos)  AB  R  H  RBI  BB  SO"
+  // or just:   "Name #num  AB  R  H  RBI  BB  SO"
+  let bat = { pa:0, ab:0, h:0, bb:0, so:0, hr:0, d:0, t:0, sb:0, hbp:0, players:0 };
+  let pit = { ip:0, h:0, r:0, er:0, bb:0, so:0, hr:0, pitchers:0 };
+  let inPitching = false;
+
+  for (const line of lines) {
+    // Switch to pitching section
+    if (/^PITCHING/i.test(line)) { inPitching = true; continue; }
+    if (/^BATTING/i.test(line))  { inPitching = false; continue; }
+    // Skip header/totals rows
+    if (/^(Totals|Name|#|AB\s+R\s+H)/i.test(line)) continue;
+    if (/^(IP\s+H|W:|L:|P-S:|WP:|HBP:|BF:|E:)/i.test(line)) continue;
+    // Skip notes lines (TB:, SB:, HBP: etc.)
+    if (/^(TB:|SB:|HBP:|CS:|2B:|3B:|LOB:)/i.test(line)) continue;
+
+    // Extract trailing numbers — works for both batting and pitching
+    // Batting:  ...  AB  R  H  RBI  BB  SO  (6 numbers)
+    // Pitching: ...  IP  H  R  ER  BB  SO  HR  (7 numbers, IP may be "2.2")
+    const nums = line.match(/[\d.]+/g) || [];
+    if (nums.length < 5) continue;
+
+    if (!inPitching) {
+      // Batting row — last 6 numbers are AB R H RBI BB SO
+      const n = nums.slice(-6).map(Number);
+      if (n.length < 6) continue;
+      const [ab, r, h, rbi, bb, so] = n;
+      if (ab === 0 && bb === 0) continue; // skip empty rows
+      bat.ab += ab; bat.h += h; bat.bb += bb; bat.so += so;
+      bat.pa += ab + bb; // approximate PA
+      bat.players++;
+    } else {
+      // Pitching row — numbers are IP H R ER BB SO HR
+      const n = nums.slice(-7).map(Number);
+      if (n.length < 6) continue;
+      const [ip, h, r, er, bb, so, hr] = n;
+      if (ip === 0) continue;
+      pit.ip += ip; pit.h += h; pit.r += r; pit.er += er;
+      pit.bb += bb; pit.so += so; pit.hr += (hr || 0);
+      pit.pitchers++;
+    }
+  }
+
+  // Also scan for SB, 2B, 3B, HR in the notes lines at the bottom
+  for (const line of lines) {
+    const sbMatch = line.match(/SB:\s*([\w\s,]+?)(?:\s*,\s*(?:CS:|LOB:|TB:|HBP:)|$)/i);
+    if (sbMatch) {
+      // Count comma-separated names as SB events
+      bat.sb += (sbMatch[1].match(/,/g) || []).length + 1;
+    }
+    const hrMatch = line.match(/HR:\s*(\w+)/i);
+    if (hrMatch) bat.hr++;
+    const dMatch = line.match(/2B:\s*([\w\s,]+?)(?:\s*,\s*(?:3B:|TB:|SB:|HBP:|CS:|LOB:)|$)/i);
+    if (dMatch) bat.d += (dMatch[1].match(/,/g) || []).length + 1;
+    const tMatch = line.match(/3B:\s*([\w\s,]+?)(?:\s*,\s*(?:2B:|TB:|SB:|HBP:|CS:|LOB:)|$)/i);
+    if (tMatch) bat.t += (tMatch[1].match(/,/g) || []).length + 1;
+  }
+
+  if (bat.players === 0 && pit.pitchers === 0) {
+    showPasteResult('Could not parse any rows. Make sure you copied both the player name and stat columns.');
+    return;
+  }
+
+  // ── Compute rates ──────────────────────────────────────────────────────
+  const batAvg   = bat.ab > 0 ? bat.h / bat.ab : 0;
+  const batBBpct = bat.pa > 0 ? bat.bb / bat.pa : 0;
+  const batKpct  = bat.pa > 0 ? bat.so / bat.pa : 0;
+
+  const pitBBper9 = pit.ip > 0 ? (pit.bb / pit.ip) * 9 : 0;
+  const pitKper9  = pit.ip > 0 ? (pit.so / pit.ip) * 9 : 0;
+  const pitHper9  = pit.ip > 0 ? (pit.h  / pit.ip) * 9 : 0;
+  const pitERper9 = pit.ip > 0 ? (pit.er / pit.ip) * 9 : 0;
+
+  // ── Auto-tags ──────────────────────────────────────────────────────────
+  const newTags = [];
+
+  // Pitching-derived (most useful for scouting)
+  if (pit.pitchers > 0) {
+    if (pitBBper9 >= 5.0)  newTags.push('Walks batters');
+    if (pitBBper9 <= 2.0)  newTags.push('Low walk rate');
+    if (pitKper9  >= 8.0)  newTags.push('High K rate');
+    if (pitKper9  <= 4.0)  newTags.push('Low K rate — makes contact');
+    if (pitHper9  >= 10.0) newTags.push('Hittable pitcher');
+    if (pitERper9 >= 5.0)  newTags.push('Gives up runs');
+    if (pit.pitchers >= 2) newTags.push('Multiple pitchers');
+    if (pit.hr === 0 && pit.ip >= 3) newTags.push('Groundball pitcher');
+  }
+
+  // Batting-derived
+  if (bat.players > 0) {
+    if (batBBpct >= 0.18)  newTags.push('High walk rate');
+    if (batKpct  >= 0.28)  newTags.push('High K rate');
+    if (batKpct  <= 0.10)  newTags.push('High contact team');
+    if (bat.sb   >= 4)     newTags.push('Speed on bases');
+    if (bat.t    >= 2)     newTags.push('Multiple triples — speed team');
+    if (batAvg   >= 0.320) newTags.push('High contact team');
+  }
+
+  // Deduplicate and merge into opponent tags
+  const added = [];
+  newTags.forEach(tag => {
+    if (!opp.tags.includes(tag)) { opp.tags.push(tag); added.push(tag); }
+  });
+
+  // Build stat summary for scoutNote
+  const summary = [];
+  if (bat.players > 0) {
+    summary.push(`Batting (${bat.players} hitters, ~${bat.pa} PA)`);
+    summary.push(`AVG: ${batAvg.toFixed(3)}  BB%: ${(batBBpct*100).toFixed(1)}%  K%: ${(batKpct*100).toFixed(1)}%`);
+    summary.push(`SB: ${bat.sb}  2B: ${bat.d}  3B: ${bat.t}  HR: ${bat.hr}`);
+  }
+  if (pit.pitchers > 0) {
+    summary.push(`Pitching (${pit.pitchers} pitcher${pit.pitchers!==1?'s':''}, ${pit.ip.toFixed(1)} IP)`);
+    summary.push(`BB/9: ${pitBBper9.toFixed(1)}  K/9: ${pitKper9.toFixed(1)}  H/9: ${pitHper9.toFixed(1)}  ERA: ${pitERper9.toFixed(2)}`);
+  }
+  opp.scoutNote = summary.join('\n');
+
+  renderScouting();
+  markStale();
+
+  const resultMsg = [
+    bat.players > 0 ? `${bat.players} batters parsed` : '',
+    pit.pitchers > 0 ? `${pit.pitchers} pitcher${pit.pitchers!==1?'s':''} parsed` : '',
+    added.length > 0 ? `${added.length} tag${added.length!==1?'s':''} added` : 'No new tags (all already set)',
+  ].filter(Boolean).join(' · ');
+
+  showPasteResult('✓ ' + resultMsg);
+  showToast(opp.name + ' updated · ' + added.length + ' new tags');
+}
+
+function showPasteResult(msg) {
+  const el = document.getElementById('paste-parse-result');
+  if (!el) return;
+  el.style.display = 'block';
+  el.textContent = msg;
+}
+
+function saveScoutingNotes(oppId) {
+  const opp = opponents.find(o => o.id === oppId);
+  if (!opp) return;
+  const noteEl = document.getElementById('coach-notes-' + oppId);
+  if (noteEl) opp.coachNote = noteEl.value;
+  closeScoutingSheet(null, true);
+  showToast('Scouting notes saved for ' + opp.name);
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
