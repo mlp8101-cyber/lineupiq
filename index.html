@@ -813,21 +813,148 @@ function renderLineup() {
     const lockSvg=p.locked?`<svg class="lock-icon" viewBox="0 0 24 24" fill="none" stroke="#378ADD" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`:'';
     const badges=[p.locked?`<span class="badge-mini badge-locked">Locked</span>`:'',p.pa<15?`<span class="badge-mini badge-lowpa">Only ${p.pa} PA</span>`:''].filter(Boolean).join(' ');
     row.innerHTML=`<div class="slot-num">${slot+1}</div><div class="player-info"><div class="player-name">${p.name}</div><div class="player-meta">${p.pos} · #${p.jersey}${badges?' · '+badges:''}</div></div>${lockSvg}<div class="player-stat">${p.obp.toFixed(3)}</div><div class="drag-handle"><span></span><span></span><span></span></div>`;
-    row.addEventListener('contextmenu',e=>{e.preventDefault();openCtxMenu(e,slot,pi);});
-    row.addEventListener('touchstart',e=>{startLongPress(e,row,slot,pi);},{passive:true});
-    row.addEventListener('touchend',cancelLongPress);row.addEventListener('touchmove',cancelLongPress);
-    row.addEventListener('dragstart',onDragStart);row.addEventListener('dragover',onDragOver);row.addEventListener('drop',onDrop);row.addEventListener('dragend',onDragEnd);
+    row.addEventListener('contextmenu', e=>{e.preventDefault();openCtxMenu(e,slot,pi);});
+    row.addEventListener('touchstart',  e=>onTouchStart(e,slot,pi), {passive:true});
+    row.addEventListener('touchmove',   onTouchMove, {passive:false});
+    row.addEventListener('touchend',    onTouchEnd,  {passive:true});
+    row.addEventListener('dragstart',   onDragStart);
+    row.addEventListener('dragover',    onDragOver);
+    row.addEventListener('drop',        onDrop);
+    row.addEventListener('dragend',     onDragEnd);
     list.appendChild(row);
   });
 }
 
-// ── Drag and drop ──────────────────────────────────────────────────────────
-let longPressTimer=null;
-function startLongPress(e,row,slot,pi){longPressTimer=setTimeout(()=>{navigator.vibrate&&navigator.vibrate(30);openCtxMenu(e,slot,pi);},500);}
-function cancelLongPress(){clearTimeout(longPressTimer);}
-function onDragStart(e){const slot=parseInt(e.currentTarget.dataset.slot),pi=parseInt(e.currentTarget.dataset.pi);if(players[pi].locked){e.preventDefault();return;}state.dragSrcSlot=slot;e.currentTarget.classList.add('dragging');}
+// ── Touch drag-to-reorder ──────────────────────────────────────────────────
+// Replaces HTML5 drag API which doesn't work on iOS Safari.
+let longPressTimer = null;
+let touchDrag = {
+  active: false,
+  srcSlot: null,
+  srcPi: null,
+  clone: null,
+  startY: 0,
+  offsetY: 0,
+};
+
+function startLongPress(e, row, slot, pi) {
+  // Long press (500ms) opens context menu
+  longPressTimer = setTimeout(() => {
+    navigator.vibrate && navigator.vibrate(30);
+    openCtxMenu(e, slot, pi);
+  }, 500);
+}
+function cancelLongPress() { clearTimeout(longPressTimer); }
+
+function onTouchStart(e, slot, pi) {
+  if (players[pi] && players[pi].locked) return;
+  clearTimeout(longPressTimer);
+
+  const touch = e.touches[0];
+  touchDrag.srcSlot = slot;
+  touchDrag.srcPi   = pi;
+  touchDrag.startY  = touch.clientY;
+  touchDrag.active  = false; // becomes true after minimal movement
+
+  // Store touch start for potential long-press context menu
+  longPressTimer = setTimeout(() => {
+    if (!touchDrag.active) {
+      navigator.vibrate && navigator.vibrate(30);
+      openCtxMenu(e, slot, pi);
+    }
+  }, 500);
+}
+
+function onTouchMove(e) {
+  if (touchDrag.srcSlot === null) return;
+  clearTimeout(longPressTimer);
+
+  const touch = e.touches[0];
+  const dy = Math.abs(touch.clientY - touchDrag.startY);
+
+  // Start drag after 8px movement
+  if (!touchDrag.active && dy > 8) {
+    touchDrag.active = true;
+    navigator.vibrate && navigator.vibrate(20);
+
+    // Create a floating clone of the dragged row
+    const srcRow = document.querySelector(`.lineup-row[data-slot="${touchDrag.srcSlot}"]`);
+    if (srcRow) {
+      const clone = srcRow.cloneNode(true);
+      const rect  = srcRow.getBoundingClientRect();
+      touchDrag.offsetY = touch.clientY - rect.top;
+      clone.style.cssText = `
+        position:fixed; left:${rect.left}px; width:${rect.width}px;
+        top:${touch.clientY - touchDrag.offsetY}px;
+        opacity:0.9; z-index:999; pointer-events:none;
+        border-color:var(--green-400); background:rgba(45,90,39,0.95);
+        border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.5);
+      `;
+      document.body.appendChild(clone);
+      touchDrag.clone = clone;
+      srcRow.style.opacity = '0.3';
+    }
+  }
+
+  if (!touchDrag.active) return;
+  e.preventDefault(); // prevent scroll only while dragging
+
+  // Move the clone
+  if (touchDrag.clone) {
+    touchDrag.clone.style.top = (touch.clientY - touchDrag.offsetY) + 'px';
+  }
+
+  // Highlight the row under the finger
+  document.querySelectorAll('.lineup-row').forEach(r => r.classList.remove('drag-over'));
+  const el = document.elementFromPoint(touch.clientX, touch.clientY);
+  const targetRow = el && el.closest('.lineup-row');
+  if (targetRow && targetRow.dataset.slot !== String(touchDrag.srcSlot)) {
+    const tpi = parseInt(targetRow.dataset.pi);
+    if (!players[tpi] || !players[tpi].locked) {
+      targetRow.classList.add('drag-over');
+    }
+  }
+}
+
+function onTouchEnd(e) {
+  clearTimeout(longPressTimer);
+  if (!touchDrag.active) { touchDrag.srcSlot = null; touchDrag.srcPi = null; return; }
+
+  const touch = e.changedTouches[0];
+
+  // Clean up clone
+  if (touchDrag.clone) { touchDrag.clone.remove(); touchDrag.clone = null; }
+
+  // Restore source row opacity
+  const srcRow = document.querySelector(`.lineup-row[data-slot="${touchDrag.srcSlot}"]`);
+  if (srcRow) srcRow.style.opacity = '';
+
+  // Find drop target
+  document.querySelectorAll('.lineup-row').forEach(r => r.classList.remove('drag-over'));
+  const el = document.elementFromPoint(touch.clientX, touch.clientY);
+  const targetRow = el && el.closest('.lineup-row');
+
+  if (targetRow) {
+    const tgtSlot = parseInt(targetRow.dataset.slot);
+    const tgtPi   = parseInt(targetRow.dataset.pi);
+    if (players[tgtPi] && players[tgtPi].locked) {
+      showToast('Cannot displace a locked player');
+    } else if (tgtSlot !== touchDrag.srcSlot) {
+      [lineupOrder[touchDrag.srcSlot], lineupOrder[tgtSlot]] =
+        [lineupOrder[tgtSlot], lineupOrder[touchDrag.srcSlot]];
+      markStale();
+      scheduleSave();
+    }
+  }
+
+  touchDrag = { active:false, srcSlot:null, srcPi:null, clone:null, startY:0, offsetY:0 };
+  renderLineup();
+}
+
+// Legacy mouse drag (desktop) kept for non-touch devices
+function onDragStart(e){const slot=parseInt(e.currentTarget.dataset.slot),pi=parseInt(e.currentTarget.dataset.pi);if(players[pi]&&players[pi].locked){e.preventDefault();return;}state.dragSrcSlot=slot;e.currentTarget.classList.add('dragging');}
 function onDragOver(e){e.preventDefault();document.querySelectorAll('.lineup-row').forEach(r=>r.classList.remove('drag-over'));e.currentTarget.classList.add('drag-over');}
-function onDrop(e){e.preventDefault();const tgt=parseInt(e.currentTarget.dataset.slot),tpi=parseInt(e.currentTarget.dataset.pi);if(players[tpi].locked){showToast('Cannot displace a locked player');renderLineup();return;}if(state.dragSrcSlot!==null&&state.dragSrcSlot!==tgt){[lineupOrder[state.dragSrcSlot],lineupOrder[tgt]]=[lineupOrder[tgt],lineupOrder[state.dragSrcSlot]];markStale();scheduleSave();}renderLineup();}
+function onDrop(e){e.preventDefault();const tgt=parseInt(e.currentTarget.dataset.slot),tpi=parseInt(e.currentTarget.dataset.pi);if(players[tpi]&&players[tpi].locked){showToast('Cannot displace a locked player');renderLineup();return;}if(state.dragSrcSlot!==null&&state.dragSrcSlot!==tgt){[lineupOrder[state.dragSrcSlot],lineupOrder[tgt]]=[lineupOrder[tgt],lineupOrder[state.dragSrcSlot]];markStale();scheduleSave();}renderLineup();}
 function onDragEnd(e){e.currentTarget.classList.remove('dragging');document.querySelectorAll('.lineup-row').forEach(r=>r.classList.remove('drag-over'));state.dragSrcSlot=null;}
 
 // ── Context menu ───────────────────────────────────────────────────────────
