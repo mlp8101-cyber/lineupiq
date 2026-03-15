@@ -8,6 +8,7 @@
 <meta name="theme-color" content="#1C1C1E">
 <title>LineupIQ</title>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root {
   /* Dodger Grey base, Blue/Red/Black accents */
@@ -1116,7 +1117,7 @@ function openScoutingDetail(oppId){
       <div style="font-size:12px;color:var(--gray-300);line-height:1.8;font-family:'Barlow Condensed',sans-serif;letter-spacing:.02em">${opp.scoutNote.replace(/\n/g,'<br>')}</div>
     </div>` : '';
 
-  sheet.innerHTML=`<div class="sheet-handle"></div><div class="opp-header"><div class="opp-title">${opp.name}</div><div class="opp-subtitle">Record: ${opp.record}</div></div>${statNoteHtml}${tagsHtml}<div class="note-field"><div class="note-label">Paste box score (batting + pitching)</div><div style="font-size:11px;color:var(--gray-300);margin-bottom:8px">Copy the BATTING and PITCHING sections from the GC PDF and paste below, then tap Parse.</div><textarea class="note-input" id="boxscore-paste-input" rows="7" placeholder="Eli B #44 (SS)  4  0  0  0  0  1&#10;Cody H #4 (2B)  3  1  0  0  1  2&#10;...&#10;PITCHING&#10;Jacob V #5  2.2  7  6  6  1  3  0"></textarea><button onclick="parseBoxScorePaste(${oppId})" style="width:100%;margin-top:8px;padding:11px;background:var(--green-600);color:var(--chalk);border:none;border-radius:10px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;cursor:pointer">Parse &amp; update tags</button><div id="paste-parse-result" style="margin-top:8px;font-size:12px;color:var(--green-300);display:none"></div></div><div class="note-field"><div class="note-label">Coach notes</div><textarea class="note-input" id="coach-notes-${oppId}" rows="3" placeholder="Anything your scouts observed…">${opp.coachNote||''}</textarea></div>${histHtml}<div style="height:16px"></div><div style="padding:0 16px 8px"><button class="use-lineup-btn" onclick="saveScoutingNotes(${oppId})">Save notes</button></div>`;
+  sheet.innerHTML=`<div class="sheet-handle"></div><div class="opp-header"><div class="opp-title">${opp.name}</div><div class="opp-subtitle">Record: ${opp.record}</div></div>${statNoteHtml}${tagsHtml}<div class="note-field"><div class="note-label">Import box score</div><div style="font-size:11px;color:var(--gray-300);margin-bottom:10px">Upload the GC box score PDF, or paste the text below as a fallback.</div><input type="file" id="boxscore-pdf-input-${oppId}" accept=".pdf,application/pdf" style="display:none" onchange="handleBoxScorePDF(event,${oppId})"><button onclick="document.getElementById('boxscore-pdf-input-${oppId}').click()" style="width:100%;padding:12px;background:var(--green-600);color:var(--chalk);border:none;border-radius:10px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;margin-bottom:8px">↑ Upload box score PDF</button><textarea class="note-input" id="boxscore-paste-input" rows="5" placeholder="Or paste box score text here…"></textarea><button onclick="parseBoxScorePaste(${oppId})" style="width:100%;margin-top:8px;padding:11px;background:rgba(255,255,255,0.08);color:var(--chalk);border:none;border-radius:10px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;cursor:pointer">Parse pasted text</button><div id="paste-parse-result" style="margin-top:8px;font-size:12px;color:var(--green-300);display:none"></div></div><div class="note-field"><div class="note-label">Coach notes</div><textarea class="note-input" id="coach-notes-${oppId}" rows="3" placeholder="Anything your scouts observed…">${opp.coachNote||''}</textarea></div>${histHtml}<div style="height:16px"></div><div style="padding:0 16px 8px"><button class="use-lineup-btn" onclick="saveScoutingNotes(${oppId})">Save notes</button></div>`;
   document.getElementById('scouting-sheet').classList.add('open');
 }
 function toggleTag(oppId,label,el){const opp=opponents.find(o=>o.id===oppId),idx=opp.tags.indexOf(label);if(idx===-1){opp.tags.push(label);el.classList.remove('inactive');}else{opp.tags.splice(idx,1);el.classList.add('inactive');}markStale();}
@@ -1400,6 +1401,70 @@ function showBoxScoreResult(type, filename, bodyHtml) {
   panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
+
+
+// ── PDF Box Score Import ───────────────────────────────────────────────────
+async function handleBoxScorePDF(event, oppId) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  showPasteResult('Reading PDF…');
+
+  try {
+    // Configure PDF.js worker
+    if (typeof pdfjsLib === 'undefined') {
+      showPasteResult('PDF library not loaded — try refreshing.');
+      return;
+    }
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    // Read file as ArrayBuffer
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+    // Extract text from all pages
+    let fullText = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+
+      // PDF.js returns items with x/y positions — reconstruct lines by grouping by Y
+      const items = textContent.items;
+      const byY = {};
+      for (const item of items) {
+        if (!item.str.trim()) continue;
+        const y = Math.round(item.transform[5]); // vertical position
+        if (!byY[y]) byY[y] = [];
+        byY[y].push({ x: item.transform[4], str: item.str });
+      }
+
+      // Sort lines top-to-bottom (PDF Y coords are bottom-up, so descending)
+      const sortedYs = Object.keys(byY).map(Number).sort((a, b) => b - a);
+      for (const y of sortedYs) {
+        // Sort items left-to-right within each line
+        const lineItems = byY[y].sort((a, b) => a.x - b.x);
+        const lineText = lineItems.map(it => it.str).join('  ');
+        fullText += lineText + '\n';
+      }
+    }
+
+    // Stuff the extracted text into the paste textarea so the existing
+    // parser can process it — also trigger parse automatically
+    const ta = document.getElementById('boxscore-paste-input');
+    if (ta) ta.value = fullText;
+
+    // Auto-parse
+    parseBoxScorePaste(oppId);
+
+    // Clear the file input for reuse
+    event.target.value = '';
+
+  } catch (err) {
+    console.error('PDF parse error:', err);
+    showPasteResult('PDF read failed: ' + err.message);
+  }
+}
 
 // ── Box Score Paste Parser ─────────────────────────────────────────────────
 function parseBoxScorePaste(oppId) {
