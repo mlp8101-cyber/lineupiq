@@ -22,19 +22,16 @@ module.exports = async function handler(req, res) {
       savedAt: new Date().toISOString(),
     });
 
-    // Delete old blobs first
+    // Delete old blobs to avoid accumulation
     const { blobs } = await list({ prefix: 'slammers-roster' });
     await Promise.all(blobs.map(b => del(b.url)));
 
-    // Vercel Blob put() requires access: 'public' — the "private store" label
-    // in the dashboard refers to store visibility, not blob access level
-    const result = await put('slammers-roster.json', payload, {
+    await put('slammers-roster.json', payload, {
       access: 'public',
       contentType: 'application/json',
     });
 
-    // Return the blob URL so the GET endpoint can fetch it directly
-    return res.status(200).json({ ok: true, url: result.url });
+    return res.status(200).json({ ok: true });
   } catch (err) {
     console.error('Blob write error:', err);
     return res.status(500).json({ error: err.message });
