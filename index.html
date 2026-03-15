@@ -810,9 +810,11 @@ function renderLineup() {
     const row=document.createElement('div');
     row.className='lineup-row'+(p.locked?' locked':'')+(p.pa<15?' low-pa':'');
     row.dataset.slot=slot;row.dataset.pi=pi;row.draggable=true;
-    const lockSvg=p.locked?`<svg class="lock-icon" viewBox="0 0 24 24" fill="none" stroke="#378ADD" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`:'';
-    const badges=[p.locked?`<span class="badge-mini badge-locked">Locked</span>`:'',p.pa<15?`<span class="badge-mini badge-lowpa">Only ${p.pa} PA</span>`:''].filter(Boolean).join(' ');
-    row.innerHTML=`<div class="slot-num">${slot+1}</div><div class="player-info"><div class="player-name">${p.name}</div><div class="player-meta">${p.pos} · #${p.jersey}${badges?' · '+badges:''}</div></div>${lockSvg}<div class="player-stat">${p.obp.toFixed(3)}</div><div class="drag-handle"><span></span><span></span><span></span></div>`;
+    const lockBtn=p.locked
+      ? `<button onclick="unlockPlayer(${pi});event.stopPropagation()" style="background:rgba(55,138,221,0.15);border:0.5px solid rgba(55,138,221,0.4);border-radius:8px;color:#85B7EB;font-size:11px;font-weight:600;padding:5px 9px;cursor:pointer;flex-shrink:0;white-space:nowrap">Unlock</button>`
+      : '';
+    const badges=[p.pa<15?`<span class="badge-mini badge-lowpa">Only ${p.pa} PA</span>`:''].filter(Boolean).join(' ');
+    row.innerHTML=`<div class="slot-num">${slot+1}</div><div class="player-info"><div class="player-name">${p.name}</div><div class="player-meta">${p.pos} · #${p.jersey}${badges?' · '+badges:''}</div></div>${lockBtn}<div class="player-stat">${p.obp.toFixed(3)}</div><div class="drag-handle"><span></span><span></span><span></span></div>`;
     row.addEventListener('contextmenu', e=>{e.preventDefault();openCtxMenu(e,slot,pi);});
     row.addEventListener('touchstart',  e=>onTouchStart(e,slot,pi), {passive:true});
     row.addEventListener('touchmove',   onTouchMove, {passive:false});
@@ -971,6 +973,7 @@ function openCtxMenu(e,slot,pi){
 function closeCtxMenu(){document.getElementById('ctx-menu').classList.remove('open');}
 function ctxLock(){players[state.ctxTargetPi].locked=true;closeCtxMenu();markStale();renderLineup();scheduleSave();showToast(players[state.ctxTargetPi].name+' locked to slot '+(state.ctxTargetSlot+1));}
 function ctxUnlock(){players[state.ctxTargetPi].locked=false;closeCtxMenu();markStale();renderLineup();scheduleSave();showToast('Lock removed');}
+function unlockPlayer(pi){if(!players[pi])return;players[pi].locked=false;markStale();renderLineup();scheduleSave();showToast(players[pi].name+' unlocked');}
 function ctxViewStats(){closeCtxMenu();const p=players[state.ctxTargetPi];showToast(`${p.name}: OBP ${p.obp.toFixed(3)} · wOBA ${p.woba.toFixed(3)} · ISO ${p.iso.toFixed(3)}`);}
 function ctxSitOut(){closeCtxMenu();if(players[state.ctxTargetPi])togglePlayerActive(state.ctxTargetPi);}
 
