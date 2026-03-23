@@ -414,7 +414,7 @@ body {
       </div>
       <div class="sim-btn-wrap">
         <button class="sim-btn" id="sim-btn" onclick="runSimulation()">Run simulation</button>
-        <div class="stale-note" id="stale-note">Lineup changed — results may be outdated</div>
+        <div class="stale-note" id="stale-note" onclick="runSimulation()" style="cursor:pointer">Lineup changed — tap Run simulation to update</div>
       </div>
       <div class="predict-metrics">
         <div class="metric-card">
@@ -1220,7 +1220,22 @@ function toggleTag(oppId,label,el){const opp=opponents.find(o=>o.id===oppId),idx
 function closeScoutingSheet(e,force){if(force||(e&&e.target===document.getElementById('scouting-sheet')))document.getElementById('scouting-sheet').classList.remove('open');}
 
 // ── Tab switching ──────────────────────────────────────────────────────────
-function switchTab(tab,btn){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));document.getElementById('screen-'+tab).classList.add('active');btn.classList.add('active');}
+function switchTab(tab,btn){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('screen-'+tab).classList.add('active');
+  btn.classList.add('active');
+  // Auto-run simulation when switching to prediction tab if results are stale or missing
+  if (tab === 'prediction') {
+    const hasPlayers = players.filter(p=>p&&p.active).length > 0;
+    if (hasPlayers && (!state.simResultFresh || !simCache.current)) {
+      // Default to Current order so user sees their exact arrangement
+      const currentPill = document.querySelectorAll('.mode-pill')[3];
+      if (currentPill) setPredictMode(3, currentPill);
+      runSimulation();
+    }
+  }
+}
 function selectGame(){switchTab('scouting',document.querySelector('[data-tab="scouting"]'));}
 
 // ── Toast ──────────────────────────────────────────────────────────────────
