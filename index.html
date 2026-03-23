@@ -634,7 +634,12 @@ async function loadRosterFromKV() {
     players.length = 0;
     data.players.forEach(p => players.push(p));
     lineupOrder.length = 0;
-    data.lineupOrder.forEach(i => { if (players[i]) lineupOrder.push(i); });
+    // Restore saved order, but only valid indices
+    data.lineupOrder.forEach(i => { if (players[i] && players[i].active) lineupOrder.push(i); });
+    // Add any active players missing from the saved order (catches new players added since last save)
+    players.forEach((p, i) => {
+      if (p && p.active && !lineupOrder.includes(i)) lineupOrder.push(i);
+    });
     if (lineupOrder.length === 0) {
       players.forEach((p, i) => { if (p && p.active) lineupOrder.push(i); });
     }
@@ -1078,8 +1083,12 @@ function openOptimizerSheet(){
 
 function applyLineup(opt){
   lineupOrder.splice(0,lineupOrder.length,...opt.order.filter(pi=>pi!==null));
+  // Ensure every active player is in lineupOrder (safety net)
+  players.forEach((p,i) => {
+    if (p && p.active && !lineupOrder.includes(i)) lineupOrder.push(i);
+  });
   closeOptimizerSheet(null,true);renderLineup();markStale();
-  scheduleSave();
+  saveRosterToKV(); // save immediately on deliberate lineup apply
   showToast(opt.rank+' applied');
 }
 function closeOptimizerSheet(e,force){if(force||(e&&e.target===document.getElementById('optimizer-sheet')))document.getElementById('optimizer-sheet').classList.remove('open');}
