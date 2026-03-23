@@ -804,28 +804,85 @@ function buildOptimalLineup(lockedSlots) {
 }
 
 function generateOptimizerOptions() {
-  const active=players.map((p,i)=>i).filter(i=>players[i]&&players[i].active);
-  if(!active.length)return[];
-  const valid=lineupOrder.filter(pi=>players[pi]&&players[pi].active);
-  const locked=valid.slice(0,9).map(pi=>players[pi]&&players[pi].locked?pi:null);
-  while(locked.length<9)locked.push(null);
-  const vars=[{label:'Optimal lineup',rec:true,wm:[0,0,0,0,0]},{label:'Alt lineup 2',rec:false,wm:[0.05,0,-0.05,0,0.05]},{label:'Alt lineup 3',rec:false,wm:[0.08,0,-0.08,0.08,-0.03]}];
-  return vars.map((v,vi)=>{
-    const saved=SLOT_WEIGHTS.map(w=>[...w]);
-    if(vi>0)SLOT_WEIGHTS.forEach((w,si)=>{w[0]=Math.max(0,saved[si][0]+v.wm[0]);w[1]=Math.max(0,saved[si][1]+v.wm[1]);w[2]=Math.max(0,saved[si][2]+v.wm[2]);w[3]=Math.max(0,saved[si][3]+v.wm[3]);w[4]=Math.max(0,saved[si][4]+v.wm[4]);});
-    const top9=buildOptimalLineup(locked);
-    SLOT_WEIGHTS.forEach((w,si)=>saved[si].forEach((val,wi)=>{w[wi]=val;}));
-    const inTop=new Set(top9.filter(pi=>pi!==null));
-    const bench=lineupOrder.filter(pi=>players[pi]&&players[pi].active&&!inTop.has(pi));
-    const order=[...top9.filter(pi=>pi!==null),...bench];
-    const tw=top9.reduce((s,pi)=>s+(pi!==null&&players[pi]?players[pi].woba:0),0);
-    const aw=top9.filter(pi=>pi!==null).length>0?tw/top9.filter(pi=>pi!==null).length:0;
-    const pr=(aw*18).toFixed(1);
-    const curW=lineupOrder.reduce((s,pi)=>s+(pi!==undefined&&players[pi]?players[pi].woba:0),0);
-    const newW=order.reduce((s,pi)=>s+(pi!==null&&players[pi]?players[pi].woba:0),0);
-    const delta=((newW-curW)*18).toFixed(1);
-    const slots=top9.map((pi,si)=>{if(pi===null||!players[pi])return{s:si+1,n:'—',stat:'—'};const p=players[pi];return{s:si+1,n:p.name,stat:p.obp>0?p.obp.toFixed(3)+' OBP':p.woba.toFixed(3)+' wOBA'};});
-    return{rank:v.label,runs:pr,range:Math.max(0,Math.round(parseFloat(pr)-2))+'–'+Math.round(parseFloat(pr)+2)+' runs',delta:vi===0?(parseFloat(delta)>=0?'+':'')+delta+' runs vs current':'',rec:v.rec,slots,order};
+  const active = players.map((p,i) => i).filter(i => players[i] && players[i].active);
+  if (!active.length) return [];
+
+  // Only lock players explicitly marked locked — don't bias toward current order
+  const lockedSlots = Array(9).fill(null);
+  active.forEach(pi => {
+    if (players[pi].locked) {
+      // Find their current position in lineupOrder and lock that slot (max slot 8)
+      const pos = lineupOrder.indexOf(pi);
+      if (pos >= 0 && pos < 9) lockedSlots[pos] = pi;
+    }
+  });
+
+  // Build full rotation: top9 optimized + remaining active players in order
+  const buildFull = (top9) => {
+    const inTop = new Set(top9.filter(pi => pi !== null));
+    // Bench = any active player NOT in the top 9, in their current lineupOrder position
+    const bench = active.filter(pi => !inTop.has(pi));
+    return [...top9.filter(pi => pi !== null), ...bench];
+  };
+
+  // Three genuinely different weight profiles
+  const profiles = [
+    // 0: Balanced optimal — best overall run value
+    { label: 'Optimal lineup', rec: true,
+      weights: [[0.40,0.20,0.05,0.25,0.10],[0.30,0.25,0.10,0.15,0.20],[0.15,0.40,0.25,0.05,0.15],
+                [0.10,0.35,0.40,0.05,0.10],[0.15,0.35,0.35,0.05,0.10],[0.20,0.35,0.25,0.05,0.15],
+                [0.25,0.30,0.20,0.05,0.20],[0.30,0.25,0.15,0.05,0.25],[0.35,0.20,0.10,0.15,0.20]] },
+    // 1: OBP/speed emphasis — put best OBP and SB guys at top
+    { label: 'Alt lineup 2', rec: false,
+      weights: [[0.55,0.10,0.02,0.28,0.05],[0.50,0.15,0.05,0.20,0.10],[0.40,0.25,0.10,0.15,0.10],
+                [0.10,0.35,0.40,0.05,0.10],[0.15,0.35,0.35,0.05,0.10],[0.20,0.30,0.25,0.10,0.15],
+                [0.30,0.25,0.15,0.10,0.20],[0.35,0.20,0.10,0.10,0.25],[0.40,0.15,0.05,0.20,0.20]] },
+    // 2: Power emphasis — maximize ISO/wOBA in cleanup spots
+    { label: 'Alt lineup 3', rec: false,
+      weights: [[0.35,0.20,0.05,0.25,0.15],[0.25,0.30,0.10,0.15,0.20],[0.05,0.35,0.45,0.05,0.10],
+                [0.05,0.25,0.60,0.05,0.05],[0.05,0.30,0.55,0.05,0.05],[0.15,0.35,0.30,0.05,0.15],
+                [0.20,0.30,0.25,0.05,0.20],[0.30,0.25,0.15,0.05,0.25],[0.35,0.20,0.10,0.15,0.20]] },
+  ];
+
+  return profiles.map((profile, vi) => {
+    // Temporarily swap SLOT_WEIGHTS for this profile
+    const savedWeights = SLOT_WEIGHTS.map(w => [...w]);
+    profile.weights.forEach((pw, si) => { if (si < SLOT_WEIGHTS.length) pw.forEach((v, wi) => { SLOT_WEIGHTS[si][wi] = v; }); });
+
+    const top9  = buildOptimalLineup(lockedSlots);
+    const order = buildFull(top9);
+
+    // Restore weights
+    savedWeights.forEach((sw, si) => sw.forEach((v, wi) => { SLOT_WEIGHTS[si][wi] = v; }));
+
+    // Projected runs display (wOBA-based estimate for the 9-slot order)
+    const validTop = top9.filter(pi => pi !== null && players[pi]);
+    const avgWoba  = validTop.length ? validTop.reduce((s,pi) => s + players[pi].woba, 0) / validTop.length : 0;
+    const projRuns = (avgWoba * 18).toFixed(1);
+    const projLo   = Math.max(0, Math.round(parseFloat(projRuns) - 2));
+    const projHi   = Math.round(parseFloat(projRuns) + 2);
+
+    // Delta vs current order
+    const curWoba = lineupOrder.reduce((s,pi) => s + (players[pi] ? players[pi].woba : 0), 0);
+    const newWoba = order.reduce((s,pi) => s + (players[pi] ? players[pi].woba : 0), 0);
+    const delta   = ((newWoba - curWoba) * 18).toFixed(1);
+
+    // Display slots (show all active players, not just 9)
+    const slots = order.map((pi, si) => {
+      if (!players[pi]) return { s: si+1, n: '—', stat: '—' };
+      const p = players[pi];
+      return { s: si+1, n: p.name, stat: p.obp > 0 ? p.obp.toFixed(3) + ' OBP' : p.woba.toFixed(3) + ' wOBA' };
+    });
+
+    return {
+      rank:  profile.label,
+      runs:  projRuns,
+      range: projLo + '–' + projHi + ' runs',
+      delta: vi === 0 ? (parseFloat(delta) >= 0 ? '+' : '') + delta + ' runs vs current' : '',
+      rec:   profile.rec,
+      slots,
+      order, // full rotation including bench — applied on "Use this lineup"
+    };
   });
 }
 
@@ -1012,7 +1069,7 @@ function openOptimizerSheet(){
   const c=document.getElementById('optimizer-options');c.innerHTML='';
   opts.forEach(opt=>{
     const el=document.createElement('div');el.className='lineup-option'+(opt.rec?' recommended':'');
-    el.innerHTML=`<div class="lineup-option-header"><div class="opt-rank">${opt.rank}${opt.rec?' <span style="margin-left:6px;font-size:10px;padding:2px 8px;border-radius:8px;background:rgba(93,202,165,0.2);color:var(--green-300)">Recommended</span>':''}</div><div style="display:flex;align-items:baseline;gap:8px;margin-top:4px"><div class="opt-runs">${opt.runs}</div><div class="opt-range">proj. runs (${opt.range})</div></div>${opt.delta?'<div style="font-size:12px;color:var(--dirt);margin-top:3px">'+opt.delta+'</div>':''}</div><div class="lineup-option-rows">${opt.slots.slice(0,9).map(s=>`<div class="opt-player-row"><div class="opt-slot">${s.s}</div><div class="opt-name">${s.n}</div><div class="opt-stat">${s.stat}</div></div>`).join('')}</div>`;
+    el.innerHTML=`<div class="lineup-option-header"><div class="opt-rank">${opt.rank}${opt.rec?' <span style="margin-left:6px;font-size:10px;padding:2px 8px;border-radius:8px;background:rgba(93,202,165,0.2);color:var(--green-300)">Recommended</span>':''}</div><div style="display:flex;align-items:baseline;gap:8px;margin-top:4px"><div class="opt-runs">${opt.runs}</div><div class="opt-range">proj. runs (${opt.range})</div></div>${opt.delta?'<div style="font-size:12px;color:var(--dirt);margin-top:3px">'+opt.delta+'</div>':''}</div><div class="lineup-option-rows">${opt.slots.map((s,i)=>(i===9&&opt.slots.length>9?'<div style="font-size:10px;color:var(--gray-300);padding:4px 0 2px;letter-spacing:.06em;text-transform:uppercase">Bench rotation</div>':'')+`<div class="opt-player-row"><div class="opt-slot" style="${i>=9?'color:var(--gray-300)':''}">${ i>=9 ? i+1 : s.s}</div><div class="opt-name" style="${i>=9?'color:var(--gray-300)':''}">${s.n}</div><div class="opt-stat" style="${i>=9?'color:var(--gray-300)':''}">  ${s.stat}</div></div>`).join('')}</div>`;
     const btn=document.createElement('button');btn.className='use-lineup-btn';btn.textContent='Use this lineup';btn.onclick=()=>applyLineup(opt);
     el.appendChild(btn);c.appendChild(el);
   });
