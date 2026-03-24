@@ -1,0 +1,8 @@
+{
+  "routes": [
+    { "src": "/privacy", "dest": "/privacy.html" },
+    { "src": "/support", "dest": "/support.html" },
+    { "src": "/api/(.*)", "dest": "/api/$1" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
+}
