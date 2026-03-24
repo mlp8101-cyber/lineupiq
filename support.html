@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#1C1C1E">
+<title>Support — LineupIQ</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Barlow', sans-serif;
+  background: #1C1C1E;
+  color: #F0F0F0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.nav {
+  background: #1C1C1E;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  padding: 0 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.nav-logo {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  text-decoration: none;
+  color: #F0F0F0;
+  letter-spacing: 0.04em;
+}
+.nav-logo span { color: #005EB8; }
+.nav-links { display: flex; gap: 32px; }
+.nav-links a {
+  font-size: 14px;
+  color: #AEAEB2;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.nav-links a:hover { color: #F0F0F0; }
+
+.hero {
+  background: linear-gradient(180deg, #1C1C1E 0%, #2A2A2E 100%);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding: 72px 40px 60px;
+  text-align: center;
+}
+.hero-eyebrow {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #005EB8;
+  margin-bottom: 16px;
+}
+.hero h1 {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: clamp(36px, 6vw, 56px);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #F0F0F0;
+  margin-bottom: 16px;
+}
+.hero p {
+  font-size: 16px;
+  color: #AEAEB2;
+  max-width: 480px;
+  margin: 0 auto;
+  line-height: 1.65;
+}
+
+/* ── Layout ── */
+.page-body {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 64px 40px 80px;
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 60px;
+  align-items: start;
+}
+
+/* ── FAQ / Info column ── */
+.info-col h2 {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: #F0F0F0;
+  letter-spacing: 0.03em;
+  margin-bottom: 24px;
+}
+
+.faq-item {
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.faq-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.faq-item h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #F0F0F0;
+  margin-bottom: 8px;
+}
+.faq-item p {
+  font-size: 14px;
+  color: #AEAEB2;
+  line-height: 1.7;
+}
+.faq-item a { color: #4D9FE0; text-decoration: none; }
+.faq-item a:hover { text-decoration: underline; }
+
+/* ── Contact form ── */
+.form-card {
+  background: #2A2A2E;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 16px;
+  padding: 36px;
+}
+.form-card h2 {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  color: #F0F0F0;
+  letter-spacing: 0.03em;
+  margin-bottom: 6px;
+}
+.form-card .form-subtitle {
+  font-size: 14px;
+  color: #6B6B6E;
+  margin-bottom: 28px;
+}
+
+.form-group { margin-bottom: 20px; }
+.form-group label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #4D9FE0;
+  margin-bottom: 8px;
+}
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  background: #38383D;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-family: 'Barlow', sans-serif;
+  font-size: 15px;
+  color: #F0F0F0;
+  outline: none;
+  transition: border-color 0.2s;
+  -webkit-appearance: none;
+}
+.form-group input::placeholder,
+.form-group textarea::placeholder { color: rgba(255,255,255,0.25); }
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus { border-color: #005EB8; }
+.form-group textarea { resize: vertical; min-height: 130px; }
+.form-group select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23AEAEB2' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 36px;
+  cursor: pointer;
+}
+.form-group select option { background: #38383D; color: #F0F0F0; }
+
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+.submit-btn {
+  width: 100%;
+  padding: 14px;
+  background: #005EB8;
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: background 0.15s, transform 0.1s;
+}
+.submit-btn:hover { background: #1A77CC; }
+.submit-btn:active { transform: scale(0.98); }
+.submit-btn:disabled { background: #38383D; color: #6B6B6E; cursor: not-allowed; transform: none; }
+
+/* Success / error states */
+.form-message {
+  display: none;
+  padding: 14px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  margin-top: 16px;
+}
+.form-message.success {
+  display: block;
+  background: rgba(0,94,184,0.15);
+  border: 1px solid rgba(0,94,184,0.3);
+  color: #7BBFEF;
+}
+.form-message.error {
+  display: block;
+  background: rgba(239,62,66,0.12);
+  border: 1px solid rgba(239,62,66,0.3);
+  color: #F09595;
+}
+
+footer {
+  background: #161618;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  padding: 32px 40px;
+  text-align: center;
+}
+footer p { font-size: 13px; color: #6B6B6E; line-height: 1.6; }
+footer a { color: #4D9FE0; text-decoration: none; }
+footer a:hover { text-decoration: underline; }
+
+@media (max-width: 720px) {
+  .nav { padding: 0 20px; }
+  .hero { padding: 52px 20px 44px; }
+  .page-body { grid-template-columns: 1fr; padding: 40px 20px 60px; gap: 48px; }
+  .form-row { grid-template-columns: 1fr; }
+  footer { padding: 24px 20px; }
+  .nav-links { gap: 20px; }
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a href="/" class="nav-logo">Lineup<span>IQ</span></a>
+  <div class="nav-links">
+    <a href="/">Home</a>
+    <a href="/support" style="color:#F0F0F0">Support</a>
+    <a href="/privacy">Privacy</a>
+  </div>
+</nav>
+
+<div class="hero">
+  <div class="hero-eyebrow">Help Center</div>
+  <h1>Support</h1>
+  <p>Have a question or running into an issue? Send us a message and we'll get back to you as soon as we can.</p>
+</div>
+
+<div class="page-body">
+
+  <!-- Left: FAQ -->
+  <div class="info-col">
+    <h2>Common Questions</h2>
+
+    <div class="faq-item">
+      <h3>How do I import my roster?</h3>
+      <p>Go to the Roster tab and tap <strong>+ Import</strong>. Export your team's batting stats from GameChanger as a CSV (web.gc.com → Stats → Export) and select that file.</p>
+    </div>
+
+    <div class="faq-item">
+      <h3>Why did my roster disappear after refreshing?</h3>
+      <p>Make sure your roster was saved — look for the green "Saved" indicator in the Roster tab. If it shows an error, check your internet connection and try re-importing your CSV.</p>
+    </div>
+
+    <div class="faq-item">
+      <h3>How do I lock a player to a batting slot?</h3>
+      <p>On the Lineup tab, long-press a player row to open the context menu, then tap <strong>Lock to this slot</strong>. Locked players show an Unlock button directly on their row.</p>
+    </div>
+
+    <div class="faq-item">
+      <h3>How do I import an opponent's stats?</h3>
+      <p>Go to Scouting → tap <strong>Scout</strong> on an opponent → tap <strong>Upload box score PDF</strong>. The app will parse the batting and pitching stats and auto-generate scouting tags.</p>
+    </div>
+
+    <div class="faq-item">
+      <h3>The simulation isn't reflecting my lineup changes.</h3>
+      <p>Switch to the Prediction tab — the simulation runs automatically when you arrive. If it still shows old results, tap <strong>Run simulation</strong> to force a refresh.</p>
+    </div>
+
+    <div class="faq-item">
+      <h3>Is my data private?</h3>
+      <p>Yes. LineupIQ does not collect any personal information. See our <a href="/privacy">Privacy Policy</a> for full details.</p>
+    </div>
+  </div>
+
+  <!-- Right: Contact form -->
+  <div class="form-card">
+    <h2>Contact Us</h2>
+    <p class="form-subtitle">We typically respond within 24 hours.</p>
+
+    <form id="contact-form" novalidate>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="first-name">First name</label>
+          <input type="text" id="first-name" name="firstName" placeholder="Coach" required>
+        </div>
+        <div class="form-group">
+          <label for="last-name">Last name</label>
+          <input type="text" id="last-name" name="lastName" placeholder="Smith" required>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="email">Email address</label>
+        <input type="email" id="email" name="email" placeholder="you@example.com" required>
+      </div>
+
+      <div class="form-group">
+        <label for="subject">Topic</label>
+        <select id="subject" name="subject" required>
+          <option value="" disabled selected>Select a topic…</option>
+          <option value="Roster Import">Roster import issue</option>
+          <option value="Lineup Optimizer">Lineup optimizer</option>
+          <option value="Simulation">Simulation / Prediction tab</option>
+          <option value="Scouting">Scouting & opponent import</option>
+          <option value="Data Sync">Data sync or storage</option>
+          <option value="iOS App">iOS app</option>
+          <option value="Feature Request">Feature request</option>
+          <option value="Bug Report">Bug report</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="message">Message</label>
+        <textarea id="message" name="message" placeholder="Describe your issue or question in as much detail as you can…" required></textarea>
+      </div>
+
+      <button type="submit" class="submit-btn" id="submit-btn">Send Message</button>
+      <div class="form-message" id="form-message"></div>
+    </form>
+  </div>
+
+</div>
+
+<footer>
+  <p>
+    &copy; 2026 LineupIQ &nbsp;·&nbsp; Slammers Lightning 12U<br>
+    <a href="/privacy">Privacy Policy</a> &nbsp;·&nbsp; <a href="/support">Support</a>
+  </p>
+</footer>
+
+<script>
+document.getElementById('contact-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+
+  const btn = document.getElementById('submit-btn');
+  const msg = document.getElementById('form-message');
+
+  // Basic validation
+  const firstName = document.getElementById('first-name').value.trim();
+  const lastName  = document.getElementById('last-name').value.trim();
+  const email     = document.getElementById('email').value.trim();
+  const subject   = document.getElementById('subject').value;
+  const message   = document.getElementById('message').value.trim();
+
+  if (!firstName || !lastName || !email || !subject || !message) {
+    msg.className = 'form-message error';
+    msg.textContent = 'Please fill in all fields before submitting.';
+    return;
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    msg.className = 'form-message error';
+    msg.textContent = 'Please enter a valid email address.';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  msg.className = 'form-message';
+  msg.style.display = 'none';
+
+  try {
+    const res = await fetch('/api/contact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ firstName, lastName, email, subject, message }),
+    });
+
+    const data = await res.json();
+
+    if (res.ok && data.ok) {
+      msg.className = 'form-message success';
+      msg.textContent = "Message sent! We'll get back to you at " + email + " within 24 hours.";
+      document.getElementById('contact-form').reset();
+    } else {
+      throw new Error(data.error || 'Server error');
+    }
+  } catch (err) {
+    msg.className = 'form-message error';
+    msg.textContent = 'Something went wrong. Please try again or email us directly at mlp8101@gmail.com';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Send Message';
+  }
+});
+</script>
+
+</body>
+</html>

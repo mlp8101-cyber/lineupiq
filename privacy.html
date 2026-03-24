@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#1C1C1E">
+<title>Privacy Policy — LineupIQ</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Barlow', sans-serif;
+  background: #1C1C1E;
+  color: #F0F0F0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Nav ── */
+.nav {
+  background: #1C1C1E;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  padding: 0 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.nav-logo {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  text-decoration: none;
+  color: #F0F0F0;
+  letter-spacing: 0.04em;
+}
+.nav-logo span { color: #005EB8; }
+.nav-links { display: flex; gap: 32px; }
+.nav-links a {
+  font-size: 14px;
+  color: #AEAEB2;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.nav-links a:hover { color: #F0F0F0; }
+
+/* ── Hero ── */
+.hero {
+  background: linear-gradient(180deg, #1C1C1E 0%, #2A2A2E 100%);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding: 72px 40px 60px;
+  text-align: center;
+}
+.hero-eyebrow {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #005EB8;
+  margin-bottom: 16px;
+}
+.hero h1 {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: clamp(36px, 6vw, 56px);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #F0F0F0;
+  margin-bottom: 16px;
+}
+.hero-date {
+  font-size: 14px;
+  color: #6B6B6E;
+}
+
+/* ── Content ── */
+.content {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 64px 40px 80px;
+  flex: 1;
+}
+
+.summary-card {
+  background: #2A2A2E;
+  border: 1px solid rgba(0,94,184,0.3);
+  border-left: 4px solid #005EB8;
+  border-radius: 12px;
+  padding: 24px 28px;
+  margin-bottom: 48px;
+}
+.summary-card p {
+  font-size: 17px;
+  font-weight: 500;
+  color: #F0F0F0;
+  line-height: 1.65;
+}
+
+.section { margin-bottom: 44px; }
+.section h2 {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: #F0F0F0;
+  letter-spacing: 0.03em;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.section p {
+  font-size: 15px;
+  line-height: 1.75;
+  color: #AEAEB2;
+  margin-bottom: 12px;
+}
+.section p:last-child { margin-bottom: 0; }
+.section strong { color: #F0F0F0; font-weight: 500; }
+
+.highlight-box {
+  background: #2A2A2E;
+  border-radius: 10px;
+  padding: 18px 22px;
+  margin: 16px 0;
+}
+.highlight-box p {
+  margin: 0;
+  color: #AEAEB2;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.check-list { list-style: none; margin: 14px 0; }
+.check-list li {
+  font-size: 15px;
+  color: #AEAEB2;
+  line-height: 1.7;
+  padding: 6px 0 6px 28px;
+  position: relative;
+}
+.check-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 14px;
+  width: 14px;
+  height: 8px;
+  border-left: 2px solid #005EB8;
+  border-bottom: 2px solid #005EB8;
+  transform: rotate(-45deg);
+}
+
+/* ── Footer ── */
+footer {
+  background: #161618;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  padding: 32px 40px;
+  text-align: center;
+}
+footer p {
+  font-size: 13px;
+  color: #6B6B6E;
+  line-height: 1.6;
+}
+footer a {
+  color: #4D9FE0;
+  text-decoration: none;
+}
+footer a:hover { text-decoration: underline; }
+
+@media (max-width: 600px) {
+  .nav { padding: 0 20px; }
+  .hero { padding: 52px 20px 44px; }
+  .content { padding: 40px 20px 60px; }
+  footer { padding: 24px 20px; }
+  .nav-links { gap: 20px; }
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a href="/" class="nav-logo">Lineup<span>IQ</span></a>
+  <div class="nav-links">
+    <a href="/">Home</a>
+    <a href="/support">Support</a>
+    <a href="/privacy" style="color:#F0F0F0">Privacy</a>
+  </div>
+</nav>
+
+<div class="hero">
+  <div class="hero-eyebrow">Legal</div>
+  <h1>Privacy Policy</h1>
+  <p class="hero-date">Effective date: March 2026 &nbsp;·&nbsp; Last updated: March 2026</p>
+</div>
+
+<div class="content">
+
+  <div class="summary-card">
+    <p><strong>The short version:</strong> LineupIQ does not collect, transmit, sell, or share any personal information about you or your players — ever. All data you enter stays on your device and in your own cloud storage.</p>
+  </div>
+
+  <div class="section">
+    <h2>Information We Collect</h2>
+    <p>We collect <strong>no personal information</strong> of any kind. LineupIQ does not require you to create an account, provide your name, email address, phone number, or any other identifying information to use the app.</p>
+    <p>The app does not contain any analytics, tracking pixels, advertising SDKs, or third-party data collection tools.</p>
+  </div>
+
+  <div class="section">
+    <h2>How Your Data Is Stored</h2>
+    <p>Any data you enter into LineupIQ — including player names, statistics, batting orders, and scouting notes — is stored in one of two places:</p>
+    <ul class="check-list">
+      <li><strong>Locally on your device</strong> — data is cached in your browser's local storage or the app's local storage and never leaves your device unless you explicitly sync it.</li>
+      <li><strong>Your own cloud storage</strong> — if you use the sync feature, your roster data is saved to a private storage bucket that only you can access. We do not have access to this data, and it is not associated with any identity.</li>
+    </ul>
+    <p>We do not store your data on our servers. We do not have a database of users or player records.</p>
+  </div>
+
+  <div class="section">
+    <h2>Player Information</h2>
+    <p>LineupIQ is designed for use with youth sports teams. We take the privacy of minors seriously. The app does not collect, store, or transmit any player information to us. Any player names or statistics you enter remain entirely under your control.</p>
+    <div class="highlight-box">
+      <p>Player statistics imported from GameChanger CSV exports are processed entirely within your device and are never sent to LineupIQ servers or any third party.</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Cookies & Tracking</h2>
+    <p>LineupIQ does not use cookies, web beacons, pixel tags, or any other tracking technologies. We do not track your usage of the app, your location, your device, or your browsing behavior.</p>
+  </div>
+
+  <div class="section">
+    <h2>Third-Party Services</h2>
+    <p>LineupIQ uses the following third-party services solely for app functionality:</p>
+    <ul class="check-list">
+      <li><strong>Vercel</strong> — hosts the web application. Vercel may log standard server access logs (IP address, request time) as part of their infrastructure. These logs are subject to <a href="https://vercel.com/legal/privacy-policy" target="_blank" style="color:#4D9FE0">Vercel's Privacy Policy</a>.</li>
+      <li><strong>Google Fonts</strong> — loads the Barlow typeface. Google may log font requests. See <a href="https://policies.google.com/privacy" target="_blank" style="color:#4D9FE0">Google's Privacy Policy</a>.</li>
+    </ul>
+    <p>We do not use any advertising networks, analytics platforms, or social media tracking.</p>
+  </div>
+
+  <div class="section">
+    <h2>Children's Privacy</h2>
+    <p>LineupIQ is a tool for coaches managing youth sports teams. We do not knowingly collect any information from children under the age of 13. Because the app collects no personal information from anyone, no special handling for children's data is required.</p>
+  </div>
+
+  <div class="section">
+    <h2>Changes to This Policy</h2>
+    <p>If we ever update this privacy policy, we will update the "Last updated" date at the top of this page. We will never introduce data collection practices without clearly communicating that change.</p>
+  </div>
+
+  <div class="section">
+    <h2>Contact</h2>
+    <p>If you have any questions about this privacy policy, please <a href="/support" style="color:#4D9FE0">contact us via our support page</a>.</p>
+  </div>
+
+</div>
+
+<footer>
+  <p>
+    &copy; 2026 LineupIQ &nbsp;·&nbsp; Slammers Lightning 12U<br>
+    <a href="/privacy">Privacy Policy</a> &nbsp;·&nbsp; <a href="/support">Support</a>
+  </p>
+</footer>
+
+</body>
+</html>
