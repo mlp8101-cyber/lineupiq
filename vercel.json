@@ -1,7 +1,7 @@
 {
   "cleanUrls": true,
+  "trailingSlash": false,
   "rewrites": [
-    { "source": "/api/(.*)", "dest": "/api/$1" },
-    { "source": "/((?!privacy|support).*)", "destination": "/index.html" }
+    { "source": "/((?!privacy$|support$|api/).*)", "destination": "/index.html" }
   ]
 }
